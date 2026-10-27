@@ -24,7 +24,7 @@ mkdirSync(config.backupDir, { recursive: true });
 function backupMembers(name: string): string[] {
   const c = config.cacheDir;
   const rel: string[] = [];
-  for (const f of readdirSafe(join(c, 'Server'))) if (f === `${name}.ini` || f.startsWith(`${name}_`)) rel.push(join('Server', f));
+  for (const f of readdirSafe(join(c, 'Server'))) if ((f === `${name}.ini` || f.startsWith(`${name}_`)) && !/\.pzsm\.(bak|tmp)$/.test(f)) rel.push(join('Server', f));
   for (const p of [join('db', `${name}.db`), join('Saves', 'Multiplayer', name), join('Saves', 'Multiplayer', `${name}_player`)]) if (existsSync(join(c, p))) rel.push(p);
   return rel.map((p) => p.split(sep).join('/'));
 }

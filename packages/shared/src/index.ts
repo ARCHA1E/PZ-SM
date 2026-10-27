@@ -224,7 +224,7 @@ export interface BackupEntry {
   file: string;
   createdAt: string;
   size: number;
-  kind: 'manual' | 'scheduled' | 'pre-restore' | 'pre-wipe' | 'pre-update' | 'import';
+  kind: 'manual' | 'scheduled' | 'pre-restore' | 'pre-wipe' | 'pre-update' | 'pre-import' | 'import';
   note?: string;
 }
 
@@ -299,3 +299,44 @@ export type WsMessage =
   | { type: 'console'; lines: ConsoleLine[] }
   | { type: 'status'; status: ServerStatus }
   | { type: 'task'; task: TaskInfo | null; line?: string };
+
+/** Server config files uploaded from the game, staged for review before installing. */
+export interface ConfigImportPreview {
+  id: string;
+  sourceName?: string;
+  targetName: string;
+  files: { kind: 'ini' | 'sandbox' | 'spawnregions' | 'spawnpoints'; name: string; size: number }[];
+  ignored: string[];
+  summary: {
+    publicName?: string;
+    maxPlayers?: string;
+    maps: string[];
+    mods: string[];
+    workshopItems: string[];
+    hasPassword: boolean;
+    sandboxVersion?: number;
+    sandboxOptions: number;
+    sandboxNamespaces: string[];
+    spawnRegions: string[];
+    spawnProfessions: string[];
+    iniKeys: number;
+  };
+  errors: string[];
+  warnings: string[];
+  /** ini keys this game build doesn't define (kept as-is). */
+  unknownIniKeys: string[];
+  /** Workshop items in the config that aren't downloaded yet. */
+  workshopToDownload: string[];
+  current: { hasConfig: boolean; hasWorld: boolean; serverRunning: boolean };
+}
+
+export interface ConfigImportOptions {
+  /** Keep this server's DefaultPort/UDPPort/RCONPort instead of the uploaded ones. */
+  keepPorts: boolean;
+  /** Delete the current world save so the server starts fresh with the new config. */
+  wipeWorld: boolean;
+  /** Download the config's Workshop items right away. */
+  downloadMods: boolean;
+  /** Start the server when done (it is restarted anyway if it was running). */
+  startAfter: boolean;
+}

@@ -1,7 +1,8 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { OptionValue, SettingDef, SettingsApplyResult, SettingsView } from '@pzsm/shared';
 import clsx from 'clsx';
-import { Eye, EyeOff, FileCode, RotateCcw, Search, Upload } from 'lucide-react';
+import { Eye, EyeOff, FileCode, FileUp, RotateCcw, Search, Upload } from 'lucide-react';
+import { ImportConfigModal } from '../components/ImportConfigModal';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { get, post, put, toast, toastError, useDebounced, useLive } from '../api';
@@ -27,6 +28,7 @@ export default function Settings({ kind }: { kind: 'server' | 'sandbox' }) {
   const [saving, setSaving] = useState(false);
   const [raw, setRaw] = useState(false);
   const [presets, setPresets] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   useEffect(() => {
     setEdits({});
@@ -107,10 +109,22 @@ export default function Settings({ kind }: { kind: 'server' | 'sandbox' }) {
             <Button onClick={() => setRaw(true)}>
               <FileCode className="h-4 w-4" /> View file
             </Button>
+            <Button variant="primary" onClick={() => setImporting(true)} title="Use the .ini / SandboxVars / spawn files of a server set up in the game">
+              <FileUp className="h-4 w-4" /> Import from game
+            </Button>
           </>
         }
       />
-      {!view.fileExists && <Notice>The {kind === 'server' ? 'server .ini' : 'SandboxVars.lua'} file does not exist yet; start the server once to generate it with defaults (values shown are defaults).</Notice>}
+      {!view.fileExists && (
+        <Notice>
+          The {kind === 'server' ? 'server .ini' : 'SandboxVars.lua'} file does not exist yet; start the server once to generate it with defaults (values shown are defaults), or{' '}
+          <button className="underline" onClick={() => setImporting(true)}>
+            import a config you made in the game
+          </button>
+          .
+        </Notice>
+      )}
+      <ImportConfigModal open={importing} onClose={() => setImporting(false)} />
       {kind === 'sandbox' && view.settings.some((s) => view.values[s.key] === null && s.source !== 'file-comment') && view.fileExists && (
         <div className="mt-3">
           <Notice tone="accent">

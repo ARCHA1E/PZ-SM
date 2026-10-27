@@ -4,6 +4,7 @@ import { Download, RotateCcw, Trash2, Upload } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { api, del, fmtBytes, fmtDate, get, post, toast, toastError, useLive } from '../api';
 import { ActionButton, Badge, Card, Empty, Loading, Notice, PageHeader } from '../components/ui';
+import { ImportConfigModal } from '../components/ImportConfigModal';
 
 export default function Backups() {
   const qc = useQueryClient();
@@ -12,6 +13,7 @@ export default function Backups() {
   const q = useQuery({ queryKey: ['backups'], queryFn: () => get<{ backups: BackupEntry[] }>('/api/backups') });
   const [note, setNote] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [importing, setImporting] = useState(false);
   useEffect(() => {
     if (!task) void qc.invalidateQueries({ queryKey: ['backups'] });
   }, [task, qc]);
@@ -31,9 +33,13 @@ export default function Backups() {
           </div>
           <p className="mt-2 text-xs text-muted">While running, the world is saved first. Scheduled backups are configured under Schedules; retention is set on the Manager page.</p>
         </Card>
-        <Card title="Import an existing server">
+        <Card title="Import a whole server (config + world)">
           <p className="mb-2 text-sm text-muted">
-            Upload a .zip or .tar.gz of a Zomboid folder (or part of it) containing <code>Server/&lt;name&gt;.ini</code> and optionally <code>Saves/Multiplayer/&lt;name&gt;</code> and <code>db/&lt;name&gt;.db</code>. It is renamed to this server. The server must be stopped.
+            Upload a .zip or .tar.gz of a Zomboid folder (or part of it) containing <code>Server/&lt;name&gt;.ini</code> and optionally <code>Saves/Multiplayer/&lt;name&gt;</code> and <code>db/&lt;name&gt;.db</code>. It is renamed to this server. The server must be stopped. Only have the config files (.ini, SandboxVars, spawn files)?{" "}
+            <button className="text-accent underline" onClick={() => setImporting(true)}>
+              Import a config from the game
+            </button>
+            .
           </p>
           <label className={`btn ${!stopped || uploading ? 'pointer-events-none opacity-50' : ''}`}>
             <Upload className="h-4 w-4" /> {uploading ? 'Uploading…' : 'Choose archive'}
@@ -62,6 +68,7 @@ export default function Backups() {
           </label>
         </Card>
       </div>
+      <ImportConfigModal open={importing} onClose={() => setImporting(false)} />
       {!stopped && <Notice tone="accent">Stop the server to restore or import.</Notice>}
       <Card title={`Backups (${list.length})`} bodyClass="p-0">
         {list.length === 0 ? (

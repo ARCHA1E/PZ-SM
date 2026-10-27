@@ -39,6 +39,7 @@ The panel never hides anything. Keys found in your files that no schema describe
   - Whitelist accounts and bans (Steam ID / IP).
   - Role edits made while the server runs are queued and applied before the next start, because the game caches roles in memory.
 - **Logs**: browse every log type, including archived sessions, with search.
+- **Import from the game**: upload the `.ini`, `SandboxVars.lua` and spawn files of a server you set up in Project Zomboid. Review them, then install them here with the Workshop mods downloaded automatically.
 - **Backups**: manual or scheduled `.tar.gz` of the save, player save, config and db, with retention, restore and download. You can also **import an existing server** from a `.zip`/`.tar.gz` of a Zomboid folder.
 - **Schedules**: restarts, backups, mod/game update checks, broadcast messages and arbitrary commands (cron syntax).
 - **Manager**: Steam branch, JVM heap and arguments, auto-start/update, in-game admin credentials, build analysis with diff after updates, and an audit log.
@@ -117,9 +118,30 @@ journalctl -u pzsm -f      # logs
 systemctl restart pzsm     # restart (the game server saves and quits first)
 ```
 
-## Moving an existing server in
+## Setting up a server from a config made in the game
 
-On Windows, zip the server's files from `%USERPROFILE%\Zomboid`. Keep the folder structure: `Server\<name>.ini`, `Server\<name>_SandboxVars.lua`, `Server\<name>_spawn*.lua`, `Saves\Multiplayer\<name>` (and `<name>_player`), and `db\<name>.db`. Then in the panel:
+You can set a server up in Project Zomboid's own Host / server settings screens, with mods, sandbox, map and spawns, and then use that exact config on a PZ-SM server:
+
+1. On Windows, open `%USERPROFILE%\Zomboid\Server\`. Find the four files for that server, for example `sophie-server-42-2.ini`, `sophie-server-42-2_SandboxVars.lua`, `sophie-server-42-2_spawnregions.lua` and `sophie-server-42-2_spawnpoints.lua`.
+2. In the panel, go to **Server Settings → Import from game**. It is also on the Sandbox and Backups pages. Drop the files in, or a `.zip` containing them.
+3. Review what was found: the files, mod and Workshop item counts, maps, sandbox options and spawn regions, plus warnings such as Build 41 keys or options this build doesn't know.
+4. Choose your options:
+   - **Keep this server's ports** (on by default, so the game ports keep matching Docker/LXC).
+   - **Download the Workshop mods now**.
+   - **Start a fresh world** (off by default; accounts and roles are kept).
+   - **Start the server when done**.
+5. Click **Import**.
+
+What the import does:
+
+- If the server is running, PZ-SM stops it (and starts it again afterwards). It also backs up the current config and world.
+- The files are renamed to this server's name, and references to `<old name>_spawnpoints.lua` are updated.
+- Everything except ports and RCON is installed byte for byte.
+- If you chose to, it downloads every `WorkshopItems=` entry with SteamCMD and fills in defaults for any mod sandbox options missing from the file.
+
+## Moving a whole server (with its world) in
+
+Zip the server's files from `%USERPROFILE%\Zomboid`, keeping the folder structure: `Server\<name>.ini`, `Server\<name>_SandboxVars.lua`, `Server\<name>_spawn*.lua`, `Saves\Multiplayer\<name>` (and `<name>_player`), and `db\<name>.db`. Then in the panel:
 
 1. Stop the server.
 2. Go to **Backups → Import**.

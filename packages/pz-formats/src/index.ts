@@ -13,3 +13,4 @@ export * from './version.js';
 export * from './text.js';
 export * from './javaClass.js';
 export * from './buildIntrospect.js';
+export * from './configBundle.js';

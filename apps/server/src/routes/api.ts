@@ -30,6 +30,7 @@ import { supervisor } from '../services/supervisor.js';
 import { currentTask, runTask, taskLog } from '../services/tasks.js';
 import { readSandbox, replaceSandboxText } from '../services/configStore.js';
 import { readTextFile } from '../util/fs.js';
+import { applyStaged, discardStaged, getStaged, stageConfigUpload } from '../services/configImport.js';
 
 /** Fire-and-forget for long operations; errors are reported through the task stream. */
 function background(p: Promise<unknown>) {
@@ -415,6 +416,32 @@ export async function apiRoutes(app: FastifyInstance) {
     const dest = join(dir, `${Date.now()}-${file.filename.replace(/[^\w.\-]/g, '_')}`);
     await pipeline(file.file, createWriteStream(dest));
     background(runTask('import', `Import ${file.filename}`, (ctx) => importServerArchive(dest, file.filename, ctx)).finally(() => rm(dest, { force: true })));
+    return { ok: true };
+  });
+
+  // Server config files made in the game (ini, SandboxVars, spawn files): upload → review → apply
+  app.post('/api/import/config', async (req) => {
+    const uploads: { filename: string; data: Buffer }[] = [];
+    for await (const part of req.files({ limits: { fileSize: 64 * 1024 * 1024, files: 20 } })) {
+      uploads.push({ filename: part.filename, data: await part.toBuffer() });
+    }
+    if (!uploads.length) throw new Error('No files uploaded');
+    return stageConfigUpload(uploads);
+  });
+  app.get('/api/import/config/:id', async (req) => getStaged((req.params as { id: string }).id));
+  app.delete('/api/import/config/:id', async (req) => {
+    discardStaged((req.params as { id: string }).id);
+    return { ok: true };
+  });
+  app.post('/api/import/config/:id/apply', async (req) => {
+    const { id } = req.params as { id: string };
+    const opts = z
+      .object({ keepPorts: z.boolean().default(true), wipeWorld: z.boolean().default(false), downloadMods: z.boolean().default(true), startAfter: z.boolean().default(false) })
+      .parse(req.body ?? {});
+    const p = await getStaged(id);
+    if (p.errors.length) throw new Error(`Cannot import: ${p.errors.join('; ')}`);
+    if (currentTask()) throw new Error(`Busy: ${currentTask()!.label}`);
+    background(applyStaged(id, opts));
     return { ok: true };
   });
 
