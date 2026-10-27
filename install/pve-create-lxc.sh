@@ -4,6 +4,8 @@
 #
 #   bash -c "$(curl -fsSL https://raw.githubusercontent.com/ARCHA1E/PZ-SM/main/install/pve-create-lxc.sh)"
 #
+# You are asked for the container ID (or pass CTID=<id>); it is never picked automatically.
+#
 # Knobs (environment): CTID, CT_HOSTNAME, CT_STORAGE, CT_TEMPLATE_STORAGE, CT_BRIDGE,
 # CT_IP (dhcp | 192.168.1.50/24), CT_GW, CT_CORES, CT_MEMORY (MB), CT_SWAP, CT_DISK (GB),
 # PZSM_ADMIN_PASSWORD, PZ_MAX_MEMORY,
@@ -13,7 +15,31 @@ set -euo pipefail
 
 command -v pct >/dev/null || { echo "Run this on a Proxmox VE host." >&2; exit 1; }
 
-CTID=${CTID:-$(pvesh get /cluster/nextid)}
+# The container ID is always chosen by the user: from CTID=..., or asked interactively.
+ctid_in_use() { compgen -G "/etc/pve/nodes/*/lxc/$1.conf" >/dev/null || compgen -G "/etc/pve/nodes/*/qemu-server/$1.conf" >/dev/null; }
+ctid_valid() {
+  if ! [[ "$1" =~ ^[0-9]+$ ]] || [ "$1" -lt 100 ] || [ "$1" -gt 999999999 ]; then
+    echo "    '$1' is not a valid ID (a whole number from 100 to 999999999)." >&2
+    return 1
+  fi
+  if ctid_in_use "$1"; then
+    echo "    ID $1 is already used by another container or VM." >&2
+    return 1
+  fi
+}
+if [ -n "${CTID:-}" ]; then
+  ctid_valid "$CTID" || exit 1
+elif { : </dev/tty; } 2>/dev/null; then
+  SUGGEST=$(pvesh get /cluster/nextid 2>/dev/null || true)
+  while :; do
+    read -r -p "Container ID for the new LXC${SUGGEST:+ (next free: $SUGGEST)}: " CTID </dev/tty
+    [ -n "$CTID" ] && ctid_valid "$CTID" && break
+  done
+else
+  echo "No terminal to ask on; set the container ID explicitly, e.g. CTID=250." >&2
+  exit 1
+fi
+
 CT_HOSTNAME=${CT_HOSTNAME:-pzserver}
 CT_STORAGE=${CT_STORAGE:-local-lvm}
 CT_TEMPLATE_STORAGE=${CT_TEMPLATE_STORAGE:-local}

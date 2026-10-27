@@ -94,7 +94,9 @@ Heavily modded servers need more.
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/ARCHA1E/PZ-SM/main/install/pve-create-lxc.sh)"
 ```
 
-Set `CTID`, `CT_MEMORY`, `CT_CORES`, `CT_DISK`, `CT_IP`, `PZSM_ADMIN_PASSWORD` and so on as environment variables in front of it to override the defaults. For example: `CT_MEMORY=16384 CT_IP=192.168.1.50/24 CT_GW=192.168.1.1 bash -c "$(curl …)"`.
+The script asks which container ID to use; it never picks one automatically. It suggests the next free ID and refuses IDs that are already taken by a container or VM anywhere in the cluster. You can also pass it up front: `CTID=250 bash -c "$(curl …)"`, which is required when running without a terminal.
+
+Set `CT_MEMORY`, `CT_CORES`, `CT_DISK`, `CT_IP`, `PZSM_ADMIN_PASSWORD` and so on as environment variables in front of it to override the defaults. For example: `CTID=250 CT_MEMORY=16384 CT_IP=192.168.1.50/24 CT_GW=192.168.1.1 bash -c "$(curl …)"`.
 
 This creates a Debian 12 container (4 cores, 12 GB RAM, 40 GB disk by default) and runs `install/lxc-install.sh` inside it. That script downloads PZ-SM from this GitHub repository, then:
 
