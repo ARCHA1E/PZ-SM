@@ -88,19 +88,27 @@ Heavily modded servers need more.
 
 **LXC with Docker**: works in a privileged or unprivileged container with `features: nesting=1,keyctl=1`.
 
-**Native LXC (no Docker)**: on the Proxmox host, from a checkout of this repo:
+**Native LXC (no Docker)**: run this in the Proxmox host shell. Nothing needs to be cloned first:
 
 ```bash
-./install/pve-create-lxc.sh                     # CTID, CT_MEMORY, CT_CORES, CT_DISK, CT_IP… via env
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/ARCHA1E/PZ-SM/main/install/pve-create-lxc.sh)"
 ```
 
-This creates a Debian 12 container (4 cores, 12 GB RAM, 40 GB disk by default), copies the source in and runs `install/lxc-install.sh`. That script:
+Set `CTID`, `CT_MEMORY`, `CT_CORES`, `CT_DISK`, `CT_IP`, `PZSM_ADMIN_PASSWORD` and so on as environment variables in front of it to override the defaults. For example: `CT_MEMORY=16384 CT_IP=192.168.1.50/24 CT_GW=192.168.1.1 bash -c "$(curl …)"`.
+
+This creates a Debian 12 container (4 cores, 12 GB RAM, 40 GB disk by default) and runs `install/lxc-install.sh` inside it. That script downloads PZ-SM from this GitHub repository, then:
 
 - installs Node 22 and SteamCMD;
-- builds PZSM into `/opt/pzsm` with its data in `/var/lib/pzsm`;
+- builds PZ-SM into `/opt/pzsm` with its data in `/var/lib/pzsm`;
 - writes `/etc/pzsm.env` and enables `pzsm.service`.
 
-To install into an existing Debian/Ubuntu LXC or VM, run `install/lxc-install.sh` as root. Re-run it to upgrade.
+To install into an existing Debian/Ubuntu LXC or VM, run this as root inside it:
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/ARCHA1E/PZ-SM/main/install/lxc-install.sh)"
+```
+
+Run the same command again to upgrade to the latest version. Your data and `/etc/pzsm.env` are kept. To install a fork, branch or tag, set `PZSM_REPO=https://github.com/<you>/<fork>.git` and/or `PZSM_REF=<branch|tag>`. To install from a local checkout (development), set `PZSM_SRC=/path/to/checkout`.
 
 ```bash
 journalctl -u pzsm -f      # logs

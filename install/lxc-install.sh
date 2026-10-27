@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
 # PZSM native installer for a Debian 12/13 or Ubuntu 22.04+ LXC container or VM (no Docker).
 #
-#   Run as root inside the container, from a checkout of this repository:
-#     ./install/lxc-install.sh
-#   or from a git URL:
-#     PZSM_REPO=https://github.com/ARCHA1E/PZ-SM.git bash lxc-install.sh
+# Run as root inside the container; it downloads PZ-SM from GitHub:
+#   bash -c "$(curl -fsSL https://raw.githubusercontent.com/ARCHA1E/PZ-SM/main/install/lxc-install.sh)"
 #
-# Re-running the script upgrades PZSM in place (data is kept).
+# Re-running the script upgrades PZSM to the latest version in place (data is kept).
 #
 # Environment knobs:
-#   PZSM_REPO            git URL to clone when not run from a checkout
-#   PZSM_REF             branch/tag to check out (default: main)
+#   PZSM_REPO            git URL to install from (default: https://github.com/ARCHA1E/PZ-SM.git)
+#   PZSM_REF             branch, tag or commit to install (default: main)
+#   PZSM_SRC             install from this local checkout instead of GitHub (development)
 #   PZSM_PORT            panel port (default 8080)
 #   PZSM_ADMIN_PASSWORD  initial panel password (else set it in the browser)
 #   PZ_SERVER_NAME       initial server name (default pzserver)
@@ -24,6 +23,8 @@ STEAMCMD_DIR=/opt/steamcmd
 ENV_FILE=/etc/pzsm.env
 SERVICE=/etc/systemd/system/pzsm.service
 NODE_MAJOR=22
+PZSM_REPO=${PZSM_REPO:-https://github.com/ARCHA1E/PZ-SM.git}
+PZSM_REF=${PZSM_REF:-main}
 
 log() { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31mError:\033[0m %s\n' "$*" >&2; exit 1; }
@@ -66,17 +67,24 @@ if [ ! -x "$STEAMCMD_DIR/steamcmd.sh" ]; then
 fi
 
 # ---------------------------------------------------------------- source
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f "$SCRIPT_DIR/../pnpm-workspace.yaml" ]; then
-  SRC="$(cd "$SCRIPT_DIR/.." && pwd)"
+# Default: fetch from GitHub. PZSM_SRC=/path/to/checkout installs a local copy instead.
+if [ -n "${PZSM_SRC:-}" ]; then
+  [ -f "$PZSM_SRC/pnpm-workspace.yaml" ] || die "PZSM_SRC=$PZSM_SRC is not a PZ-SM checkout"
+  SRC="$(cd "$PZSM_SRC" && pwd)"
+  log "Using local source $SRC"
 else
-  [ -n "${PZSM_REPO:-}" ] || die "not run from a checkout; set PZSM_REPO to a git URL"
   SRC=/usr/local/src/pzsm
-  if [ -d "$SRC/.git" ]; then
-    git -C "$SRC" fetch -q && git -C "$SRC" checkout -q "${PZSM_REF:-main}" && git -C "$SRC" pull -q --ff-only || true
+  log "Fetching $PZSM_REPO ($PZSM_REF)"
+  if [ ! -d "$SRC/.git" ]; then
+    rm -rf "$SRC"
+    git init -q "$SRC"
+    git -C "$SRC" remote add origin "$PZSM_REPO"
   else
-    git clone -q --branch "${PZSM_REF:-main}" "$PZSM_REPO" "$SRC"
+    git -C "$SRC" remote set-url origin "$PZSM_REPO"
   fi
+  git -C "$SRC" fetch -q --depth 1 origin "$PZSM_REF" || die "could not fetch '$PZSM_REF' from $PZSM_REPO"
+  git -C "$SRC" checkout -q --force FETCH_HEAD
+  log "Source at $(git -C "$SRC" rev-parse --short HEAD)"
 fi
 
 log "Building PZSM from $SRC"
@@ -168,3 +176,4 @@ log "Done. Panel: http://${IP:-<this-host>}:${PZSM_PORT:-8080}"
 echo "    Game ports: UDP 16261-16262 (forward these on your router/firewall)."
 echo "    Logs:       journalctl -u pzsm -f"
 echo "    Config:     $ENV_FILE   Data: $DATA_DIR"
+echo "    Upgrade:    re-run this installer (it fetches the latest $PZSM_REF)"
