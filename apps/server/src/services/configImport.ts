@@ -18,7 +18,8 @@ import { getManifest } from './buildAnalyzer.js';
 import { afterModsChanged } from './operations.js';
 import { invalidateModScan } from './mods.js';
 import { serverPaths } from './paths.js';
-import { downloadWorkshopItems, readWorkshopAcf } from './steam.js';
+import { readWorkshopAcf } from './steam.js';
+import { downloadWorkshopItems } from './workshopDownloader.js';
 import { supervisor } from './supervisor.js';
 import { runTask } from './tasks.js';
 

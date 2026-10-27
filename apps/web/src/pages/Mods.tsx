@@ -9,6 +9,7 @@ export default function Mods() {
   const qc = useQueryClient();
   const task = useLive((s) => s.task);
   const q = useQuery({ queryKey: ['mods'], queryFn: () => get<ModsView>('/api/mods') });
+  const job = useQuery({ queryKey: ['workshop-job'], queryFn: () => get<{ job: { total: number; done: number; remaining: string[]; permanent: Record<string, string>; lastError?: string; updatedAt: string } | null }>('/api/workshop/job') });
   const [tab, setTab] = useState<'mods' | 'order' | 'workshop'>('mods');
   const [add, setAdd] = useState(false);
   const [filter, setFilter] = useState('');
@@ -20,6 +21,7 @@ export default function Mods() {
   const prevTask = useLive((s) => s.task?.kind);
   useEffect(() => {
     if (!task) void qc.invalidateQueries({ queryKey: ['mods'] });
+    if (!task) void qc.invalidateQueries({ queryKey: ['workshop-job'] });
   }, [task, prevTask, qc]);
 
   const view = q.data;
@@ -66,6 +68,27 @@ export default function Mods() {
           </>
         }
       />
+      {job.data?.job && !task && (
+        <Notice tone="accent">
+          <div className="flex flex-wrap items-center gap-3">
+            <span>
+              A Workshop download stopped before finishing: {job.data.job.done}/{job.data.job.total} done, {job.data.job.remaining.length} left
+              {job.data.job.lastError ? ` (last error: ${job.data.job.lastError})` : ''}. It continues from the first missing item.
+            </span>
+            <ActionButton variant="primary" onAction={() => post('/api/workshop/resume').then(() => toast('Resuming download'))}>
+              Resume download
+            </ActionButton>
+            <ActionButton variant="ghost" onAction={() => del('/api/workshop/job').then(() => qc.invalidateQueries({ queryKey: ['workshop-job'] }))}>
+              Dismiss
+            </ActionButton>
+          </div>
+          {Object.keys(job.data.job.permanent).length > 0 && (
+            <div className="mt-1 text-xs text-muted">
+              Unavailable on the Workshop (skipped): {Object.entries(job.data.job.permanent).map(([id, r]) => `${id} (${r})`).join(', ')}
+            </div>
+          )}
+        </Notice>
+      )}
       {view.problems.length > 0 && (
         <Notice>
           <ul className="list-inside list-disc">

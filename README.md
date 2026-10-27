@@ -27,6 +27,7 @@ The panel never hides anything. Keys found in your files that no schema describe
   - Add Workshop items by ID, URL or collection; they download through SteamCMD.
   - Enable mods with automatic dependencies, and auto-sort the load order from `require` / `loadModAfter` / `loadModBefore`.
   - B42 version-folder resolution (`42/`, `42.13/`, `common/`) and problem detection: missing deps, B41-only mods, incompatibilities, version ranges.
+  - Downloads survive flaky Steam connections. When SteamCMD loses its connection (every remaining item fails with "No Connection"), the session is killed and a new one continues from the first missing item, with backoff. Items already up to date are skipped, and an interrupted download resumes after a restart or from the Mods page.
   - Update checks against the Steam API, with an optional automatic restart.
 - **Maps & Spawns**:
   - `Map=` ordering from the game and mod maps catalog.

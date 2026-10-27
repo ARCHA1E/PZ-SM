@@ -29,7 +29,8 @@ import { startMetrics } from './services/metrics.js';
 import { applyPendingOps } from './services/permissions.js';
 import { reloadSchedules, seedSchedules } from './services/scheduler.js';
 import { supervisor } from './services/supervisor.js';
-import { installOrUpdate } from './services/operations.js';
+import { afterModsChanged, installOrUpdate, resumeWorkshopDownload } from './services/operations.js';
+import { workshopJobStatus } from './services/workshopDownloader.js';
 import { TaskBusyError } from './services/tasks.js';
 
 const app = Fastify({
@@ -155,6 +156,14 @@ async function boot() {
   } else {
     await getManifest().catch((e) => supervisor.sys(`Build analysis failed: ${(e as Error).message}`));
     if (s.updateOnStart) await installOrUpdate().catch((e) => supervisor.sys(`Update failed: ${(e as Error).message}`));
+  }
+  // A Workshop download was interrupted (e.g. the container restarted): finish it first.
+  const job = workshopJobStatus();
+  if (job) {
+    supervisor.sys(`Resuming interrupted Workshop download (${job.done}/${job.total} done)`);
+    await resumeWorkshopDownload()
+      .then(() => afterModsChanged())
+      .catch((e) => supervisor.sys(`Workshop resume failed: ${(e as Error).message}`));
   }
   if (supervisor.installed() && s.autoStart && supervisor.state === 'stopped') {
     await supervisor.start('autostart').catch((e) => supervisor.sys(`Autostart failed: ${(e as Error).message}`));

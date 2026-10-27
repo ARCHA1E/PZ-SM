@@ -4,7 +4,8 @@ import { createBackup } from './backups.js';
 import { analyzeBuild, getManifest, summarize } from './buildAnalyzer.js';
 import { invalidateModScan, getModState } from './mods.js';
 import { addMissingSandboxDefaults } from './settingsRegistry.js';
-import { downloadWorkshopItems, fetchLatestBuildId, getPublishedFileDetails, installOrUpdateServer, readInstalledBuild, readWorkshopAcf } from './steam.js';
+import { fetchLatestBuildId, getPublishedFileDetails, installOrUpdateServer, readInstalledBuild, readWorkshopAcf } from './steam.js';
+import { downloadWorkshopItems, workshopJobStatus } from './workshopDownloader.js';
 import { supervisor } from './supervisor.js';
 import { runTask } from './tasks.js';
 
@@ -46,12 +47,19 @@ export async function checkGameUpdate(): Promise<{ installed?: string; latest?: 
 }
 
 /** Download (or update) Workshop items now, then refresh mod scan and sandbox defaults. */
-export async function downloadWorkshop(ids: string[]): Promise<{ ok: string[]; failed: string[] }> {
-  const r = await runTask('workshop', `Download ${ids.length} Workshop item(s)`, (ctx) => downloadWorkshopItems(ids, ctx));
+export async function downloadWorkshop(ids: string[], opts: { validate?: boolean; force?: boolean } = {}): Promise<{ ok: string[]; failed: string[] }> {
+  const r = await runTask('workshop', `Download ${ids.length} Workshop item(s)`, (ctx) => downloadWorkshopItems(ids, ctx, opts));
   invalidateModScan();
   await getPublishedFileDetails(r.ok).catch(() => []);
-  audit('workshop.download', `${r.ok.join(',')}${r.failed.length ? ` failed: ${r.failed.join(',')}` : ''}`);
+  audit('workshop.download', `${r.ok.length} ok${r.failed.length ? `, failed: ${r.failed.join(',')}` : ''}`);
   return r;
+}
+
+/** Continue an interrupted Workshop download from where it stopped. */
+export async function resumeWorkshopDownload(): Promise<{ ok: string[]; failed: string[] }> {
+  const st = workshopJobStatus();
+  if (!st) throw new Error('No interrupted Workshop download to resume');
+  return downloadWorkshop([...st.remaining]);
 }
 
 /** Compare Workshop time_updated with the local install; returns outdated item ids. */

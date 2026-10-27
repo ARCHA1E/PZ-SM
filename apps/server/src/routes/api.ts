@@ -18,7 +18,8 @@ import { listLogFiles, readLog, searchLogs } from '../services/logs.js';
 import { getServerSpawnPoints, getSpawnRegions, mapCatalog, setMapOrder, setServerSpawnPoints, setSpawnRegions, suggestSpawnRegions, worldOperation, type WorldOp } from '../services/maps.js';
 import { metricsHistory } from '../services/metrics.js';
 import { findModPoster, invalidateModScan, modsView, removeWorkshopItem, setActiveMods, getModState, setWorkshopItems } from '../services/mods.js';
-import { afterModsChanged, checkGameUpdate, checkModUpdates, downloadWorkshop, installOrUpdate } from '../services/operations.js';
+import { afterModsChanged, checkGameUpdate, checkModUpdates, downloadWorkshop, installOrUpdate, resumeWorkshopDownload } from '../services/operations.js';
+import { clearWorkshopJob, workshopJobStatus } from '../services/workshopDownloader.js';
 import { installPaths, serverPaths } from '../services/paths.js';
 import { addUser, banUser, discardPending, permissionsView, removeUser, setUserPassword, setUserRole, submitOp, unban } from '../services/permissions.js';
 import { listPlayers } from '../services/players.js';
@@ -223,10 +224,22 @@ export async function apiRoutes(app: FastifyInstance) {
     return { added: [...ids] };
   });
   app.post('/api/workshop/download', async (req) => {
-    const b = z.object({ ids: z.array(z.string()).optional() }).parse(req.body ?? {});
+    const b = z.object({ ids: z.array(z.string()).optional(), validate: z.boolean().optional(), force: z.boolean().optional() }).parse(req.body ?? {});
     const ids = b.ids?.length ? b.ids : (await getModState()).workshopItems;
-    background(downloadWorkshop(ids).then(() => afterModsChanged()));
+    if (currentTask()) throw Object.assign(new Error(`Busy: ${currentTask()!.label}`), { statusCode: 409 });
+    background(downloadWorkshop(ids, { validate: b.validate, force: b.force }).then(() => afterModsChanged()));
     return { ok: true, count: ids.length };
+  });
+  app.get('/api/workshop/job', async () => ({ job: workshopJobStatus() }));
+  app.post('/api/workshop/resume', async () => {
+    if (!workshopJobStatus()) throw new Error('No interrupted Workshop download to resume');
+    if (currentTask()) throw Object.assign(new Error(`Busy: ${currentTask()!.label}`), { statusCode: 409 });
+    background(resumeWorkshopDownload().then(() => afterModsChanged()));
+    return { ok: true };
+  });
+  app.delete('/api/workshop/job', async () => {
+    clearWorkshopJob();
+    return { ok: true };
   });
   app.delete('/api/workshop/:id', async (req) => {
     const { id } = req.params as { id: string };

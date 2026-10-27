@@ -62,23 +62,6 @@ export async function installOrUpdateServer(ctx: TaskContext, opts: { validate?:
   throw new Error('SteamCMD did not report a successful install (see task log)');
 }
 
-/** Download/update Workshop items into the server install dir (same place the server uses). */
-export async function downloadWorkshopItems(ids: string[], ctx: TaskContext): Promise<{ ok: string[]; failed: string[] }> {
-  const ok: string[] = [];
-  let remaining = [...new Set(ids)];
-  for (let attempt = 1; attempt <= 3 && remaining.length; attempt++) {
-    const args = ['+force_install_dir', config.installDir, '+login', 'anonymous'];
-    for (const id of remaining) args.push('+workshop_download_item', String(config.workshopAppId), id, 'validate');
-    args.push('+quit');
-    const { output } = await runSteamcmd(args, ctx);
-    const succeeded = new Set([...output.matchAll(/Success\. Downloaded item (\d+)/g)].map((m) => m[1]));
-    if (config.dryRun) remaining.forEach((r) => succeeded.add(r));
-    ok.push(...remaining.filter((r) => succeeded.has(r)));
-    remaining = remaining.filter((r) => !succeeded.has(r));
-    if (remaining.length) ctx.log(`Retrying ${remaining.length} item(s): ${remaining.join(', ')}`);
-  }
-  return { ok, failed: remaining };
-}
 
 export interface InstalledBuild {
   buildId?: string;
