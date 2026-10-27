@@ -1,0 +1,9 @@
+{
+    "Sandbox_VideoGameConsoles": "Video Game Consoles",
+
+    "Sandbox_VideoGameConsoles_LootRarity": "Spawn Chance",
+    "Sandbox_VideoGameConsoles_LootRarity_tooltip": "Adjust the spawn chance of video games and consoles",
+    "Sandbox_VideoGameConsoles_LootRarity_option1": "Low",
+    "Sandbox_VideoGameConsoles_LootRarity_option2": "Normal",
+    "Sandbox_VideoGameConsoles_LootRarity_option3": "High"
+}

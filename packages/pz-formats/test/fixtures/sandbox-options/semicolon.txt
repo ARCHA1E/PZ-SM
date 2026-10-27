@@ -1,0 +1,27 @@
+VERSION = 1,
+
+option CF8KSweeper.AllowTiles = {
+	type = boolean, default = true, page = StreetSweeper, translation = StreetSweeper_AllowTiles,
+}
+option CF8KSweeper.SpriteWhitelist = {
+	type = string, page = StreetSweeper, translation = StreetSweeper_SpriteWhitelist,
+	default = brokenglass_1_;trash_01_;d_trash_;street_decoration_01_26;street_decoration_01_27;damaged_objects_01_26;damaged_objects_01_27;damaged_objects_01_18;damaged_objects_01_19;damaged_objects_01_20;damaged_objects_01_21,
+}
+option CF8KSweeper.AllowBlood = {
+	type = boolean, default = true, page = StreetSweeper, translation = StreetSweeper_AllowBlood,
+}
+option CF8KSweeper.AllowGrime = {
+	type = boolean, default = true, page = StreetSweeper, translation = StreetSweeper_AllowGrime,
+}
+option CF8KSweeper.AllowAshes = {
+	type = boolean, default = true, page = StreetSweeper, translation = StreetSweeper_AllowAshes,
+}
+option CF8KSweeper.AllowItems = {
+	type = boolean, default = true, page = StreetSweeper, translation = StreetSweeper_AllowItems,
+}
+option CF8KSweeper.AllowCorpses = {
+	type = boolean, default = true, page = StreetSweeper, translation = StreetSweeper_AllowCorpses,
+}
+option CF8KSweeper.AllowUserAutoDelete = {
+	type = boolean, default = false, page = StreetSweeper, translation = StreetSweeper_AllowUserAutoDelete,
+}

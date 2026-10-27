@@ -1,0 +1,30 @@
+# PZSM: Project Zomboid B42 dedicated server + web manager.
+#   cp .env.example .env   # set PZSM_ADMIN_PASSWORD at least
+#   docker compose up -d
+# Panel: http://<host>:8080  · Game: UDP 16261-16262
+services:
+  pzsm:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: pzsm:latest
+    container_name: pzsm
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-UTC}
+    ports:
+      - "${PZSM_PANEL_PORT:-8080}:8080/tcp"
+      # Same number inside and outside: the game advertises its own port to clients.
+      - "${PZ_GAME_PORT:-16261}:${PZ_GAME_PORT:-16261}/udp"
+      - "${PZ_UDP_PORT:-16262}:${PZ_UDP_PORT:-16262}/udp"
+    volumes:
+      - ${PZSM_DATA_DIR:-./data}:/data
+    # Give the server time to save and quit cleanly.
+    stop_grace_period: 150s
+    ulimits:
+      nofile: { soft: 65536, hard: 65536 }
+    # Uncomment to cap memory (Java heap + ~3 GB native):
+    # mem_limit: 12g

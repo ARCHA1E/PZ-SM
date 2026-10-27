@@ -1,0 +1,90 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: 245 246 243;
+  --panel: 255 255 255;
+  --panel2: 238 240 235;
+  --line: 214 218 208;
+  --fg: 28 32 26;
+  --muted: 105 112 100;
+  --accent: 84 140 40;
+  --ok: 46 140 70;
+  --warn: 196 128 20;
+  --bad: 196 54 48;
+}
+.dark {
+  --bg: 17 19 16;
+  --panel: 26 29 24;
+  --panel2: 34 38 31;
+  --line: 52 58 47;
+  --fg: 226 230 220;
+  --muted: 140 148 132;
+  --accent: 143 209 79;
+  --ok: 92 196 120;
+  --warn: 232 176 64;
+  --bad: 240 98 88;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+body {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 14px;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--line));
+  border-radius: 6px;
+  border: 2px solid rgb(var(--bg));
+}
+input,
+select,
+textarea {
+  color-scheme: dark;
+}
+html:not(.dark) input,
+html:not(.dark) select,
+html:not(.dark) textarea {
+  color-scheme: light;
+}
+
+@layer components {
+  .input {
+    @apply w-full rounded-md border border-line bg-panel2 px-2.5 py-1.5 text-sm text-fg outline-none placeholder:text-muted focus:border-accent;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-line bg-panel2 px-3 py-1.5 text-sm font-medium text-fg transition hover:border-accent disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply border-accent bg-accent text-bg hover:brightness-110;
+  }
+  .btn-danger {
+    @apply border-bad/60 text-bad hover:border-bad hover:bg-bad/10;
+  }
+  .btn-ghost {
+    @apply border-transparent bg-transparent hover:border-line hover:bg-panel2;
+  }
+  .card {
+    @apply rounded-lg border border-line bg-panel;
+  }
+  .label {
+    @apply text-xs font-medium uppercase tracking-wide text-muted;
+  }
+  .table {
+    @apply w-full text-left text-sm;
+  }
+  .table th {
+    @apply border-b border-line px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted;
+  }
+  .table td {
+    @apply border-b border-line/60 px-3 py-2 align-top;
+  }
+}

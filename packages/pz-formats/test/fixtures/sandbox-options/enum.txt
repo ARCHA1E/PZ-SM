@@ -1,0 +1,8 @@
+VERSION = 1,
+option VideoGameConsoles.LootRarity
+{
+	type = enum,
+	default = 2, numValues = 3,
+	page = VideoGameConsoles,
+	translation = VideoGameConsoles_LootRarity,  
+}
