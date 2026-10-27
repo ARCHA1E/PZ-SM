@@ -26,19 +26,70 @@ NODE_MAJOR=22
 PZSM_REPO=${PZSM_REPO:-https://github.com/ARCHA1E/PZ-SM.git}
 PZSM_REF=${PZSM_REF:-main}
 
+INSTALL_LOG=/var/log/pzsm-install.log
+
 log() { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
+warn() { printf '\033[1;33m==>\033[0m %s\n' "$*" >&2; }
 die() { printf '\033[1;31mError:\033[0m %s\n' "$*" >&2; exit 1; }
+
+# retry <attempts> <command...>: re-run flaky network steps with a growing pause.
+retry() {
+  local n=$1 i=1
+  shift
+  until "$@"; do
+    [ "$i" -ge "$n" ] && return 1
+    warn "Attempt $i/$n failed: $*; retrying in $((i * 5))s"
+    sleep $((i * 5))
+    i=$((i + 1))
+  done
+}
+
+# Run a build step quietly, keeping its output in $INSTALL_LOG and showing it on failure.
+step() {
+  echo "+ $*" >>"$INSTALL_LOG"
+  if ! "$@" >>"$INSTALL_LOG" 2>&1; then
+    tail -n 40 "$INSTALL_LOG" >&2
+    die "'$*' failed (full log: $INSTALL_LOG)"
+  fi
+}
+
+# Run a command with its output appended to $INSTALL_LOG (returns its status).
+quiet() {
+  echo "+ $*" >>"$INSTALL_LOG"
+  "$@" >>"$INSTALL_LOG" 2>&1
+}
+
+# Wait until every host resolves; DNS in a freshly started container can lag or flap.
+wait_for_dns() {
+  local h i
+  for h in "$@"; do
+    for i in $(seq 1 12); do
+      getent ahosts "$h" >/dev/null && break
+      [ "$i" = 1 ] && warn "Waiting for DNS to resolve $h…"
+      sleep 5
+    done
+    if ! getent ahosts "$h" >/dev/null; then
+      die "cannot resolve $h. Check the container's DNS (nameservers in /etc/resolv.conf: $(awk '/^nameserver/ {print $2}' /etc/resolv.conf | xargs)); in Proxmox see the container's DNS tab, then re-run this installer."
+    fi
+  done
+}
 
 [ "$(id -u)" = 0 ] || die "run as root"
 command -v apt-get >/dev/null || die "this installer supports Debian/Ubuntu (apt) only"
 [ "$(uname -m)" = "x86_64" ] || die "Project Zomboid dedicated server requires x86_64"
 
 export DEBIAN_FRONTEND=noninteractive
+# The caller's locale (e.g. en_US.UTF-8 passed through `pct exec`) may not exist here yet.
+export LANG=C.UTF-8 LC_ALL=C.UTF-8
+unset LANGUAGE
+: >"$INSTALL_LOG"
+
+wait_for_dns deb.debian.org github.com
 
 log "Installing system packages"
 dpkg --add-architecture i386
-apt-get update -qq
-apt-get install -y -qq --no-install-recommends \
+retry 3 apt-get update -qq
+retry 3 apt-get install -y -qq --no-install-recommends \
   ca-certificates curl gnupg git tar xz-utils procps locales \
   lib32gcc-s1 lib32stdc++6 build-essential python3 >/dev/null
 sed -i 's/^# *en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen && locale-gen >/dev/null || true
@@ -46,11 +97,13 @@ sed -i 's/^# *en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen && locale-gen >/dev/null
 if ! command -v node >/dev/null || [ "$(node -p 'process.versions.node.split(".")[0]')" -lt "$NODE_MAJOR" ]; then
   log "Installing Node.js ${NODE_MAJOR}"
   install -d -m 0755 /etc/apt/keyrings
-  curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor --yes -o /etc/apt/keyrings/nodesource.gpg
+  retry 3 curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key -o /tmp/nodesource.key
+  gpg --dearmor --yes -o /etc/apt/keyrings/nodesource.gpg /tmp/nodesource.key
   echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_${NODE_MAJOR}.x nodistro main" >/etc/apt/sources.list.d/nodesource.list
-  apt-get update -qq && apt-get install -y -qq nodejs >/dev/null
+  retry 3 apt-get update -qq
+  retry 3 apt-get install -y -qq nodejs >/dev/null
 fi
-corepack enable >/dev/null 2>&1 || npm install -g corepack >/dev/null
+corepack enable >/dev/null 2>&1 || retry 3 npm install -g corepack >/dev/null
 
 if ! id pzsm >/dev/null 2>&1; then
   log "Creating user pzsm"
@@ -61,7 +114,9 @@ install -d -o pzsm -g pzsm "$DATA_DIR" "$DATA_DIR/server" "$DATA_DIR/zomboid" "$
 if [ ! -x "$STEAMCMD_DIR/steamcmd.sh" ]; then
   log "Installing SteamCMD"
   install -d -o pzsm -g pzsm "$STEAMCMD_DIR"
-  curl -fsSL https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz | tar -xz -C "$STEAMCMD_DIR"
+  retry 3 curl -fsSL https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz -o /tmp/steamcmd_linux.tar.gz
+  tar -xzf /tmp/steamcmd_linux.tar.gz -C "$STEAMCMD_DIR"
+  rm -f /tmp/steamcmd_linux.tar.gz
   chown -R pzsm:pzsm "$STEAMCMD_DIR"
   su - pzsm -c "$STEAMCMD_DIR/steamcmd.sh +quit" >/dev/null 2>&1 || true
 fi
@@ -82,7 +137,7 @@ else
   else
     git -C "$SRC" remote set-url origin "$PZSM_REPO"
   fi
-  git -C "$SRC" fetch -q --depth 1 origin "$PZSM_REF" || die "could not fetch '$PZSM_REF' from $PZSM_REPO"
+  retry 4 git -C "$SRC" fetch -q --depth 1 origin "$PZSM_REF" || die "could not fetch '$PZSM_REF' from $PZSM_REPO"
   git -C "$SRC" checkout -q --force FETCH_HEAD
   log "Source at $(git -C "$SRC" rev-parse --short HEAD)"
 fi
@@ -91,16 +146,31 @@ log "Building PZSM from $SRC"
 BUILD=$(mktemp -d)
 trap 'rm -rf "$BUILD"' EXIT
 tar -C "$SRC" --exclude=node_modules --exclude=dist --exclude=.git --exclude=data -cf - . | tar -C "$BUILD" -xf -
+wait_for_dns registry.npmjs.org
 (
   cd "$BUILD"
   export COREPACK_ENABLE_DOWNLOAD_PROMPT=0 CI=1
-  pnpm install --frozen-lockfile >/dev/null
-  pnpm --filter @pzsm/pz-formats build >/dev/null
-  pnpm --filter @pzsm/shared build >/dev/null
-  pnpm --filter @pzsm/server build >/dev/null
-  pnpm --filter @pzsm/web build >/dev/null
+  # Resilience against slow/flaky resolvers and registries.
+  export NODE_OPTIONS="--dns-result-order=ipv4first ${NODE_OPTIONS:-}"
+  export npm_config_fetch_retries=6 npm_config_fetch_retry_mintimeout=10000 npm_config_fetch_retry_maxtimeout=120000
+  PNPM_SPEC=$(node -p 'require("./package.json").packageManager || "pnpm@9"')
+  log "Preparing $PNPM_SPEC"
+  retry 5 corepack prepare "$PNPM_SPEC" --activate >>"$INSTALL_LOG" 2>&1 || {
+    tail -n 20 "$INSTALL_LOG" >&2
+    die "could not download $PNPM_SPEC from registry.npmjs.org"
+  }
+  log "Installing dependencies"
+  retry 3 quiet pnpm install --frozen-lockfile || {
+    tail -n 40 "$INSTALL_LOG" >&2
+    die "dependency install failed (full log: $INSTALL_LOG)"
+  }
+  log "Compiling"
+  step pnpm --filter @pzsm/pz-formats build
+  step pnpm --filter @pzsm/shared build
+  step pnpm --filter @pzsm/server build
+  step pnpm --filter @pzsm/web build
   rm -rf "$BUILD/out"
-  pnpm --filter @pzsm/server deploy --prod "$BUILD/out" >/dev/null
+  step pnpm --filter @pzsm/server deploy --prod "$BUILD/out"
   cp -r apps/web/dist "$BUILD/out/web"
 )
 

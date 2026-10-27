@@ -81,7 +81,7 @@ done
 
 PZSM_REPO=${PZSM_REPO:-https://github.com/ARCHA1E/PZ-SM.git}
 PZSM_REF=${PZSM_REF:-main}
-INSTALL_ENV=(PZSM_ADMIN_PASSWORD="${PZSM_ADMIN_PASSWORD:-}" PZ_MAX_MEMORY="$PZ_MAX_MEMORY" PZ_SERVER_NAME="$CT_HOSTNAME" PZSM_REPO="$PZSM_REPO" PZSM_REF="$PZSM_REF")
+INSTALL_ENV=(LANG=C.UTF-8 LC_ALL=C.UTF-8 PZSM_ADMIN_PASSWORD="${PZSM_ADMIN_PASSWORD:-}" PZ_MAX_MEMORY="$PZ_MAX_MEMORY" PZ_SERVER_NAME="$CT_HOSTNAME" PZSM_REPO="$PZSM_REPO" PZSM_REF="$PZSM_REF")
 
 if [ -n "${PZSM_SRC:-}" ]; then
   echo "==> Copying local source $PZSM_SRC into the container"
@@ -96,7 +96,7 @@ else
   # Repo URL → raw URL of the installer at the same ref (works for GitHub forks too).
   RAW_BASE=$(printf '%s' "$PZSM_REPO" | sed -E 's#^https://github.com/#https://raw.githubusercontent.com/#; s#\.git$##')
   echo "==> Installing PZ-SM from $PZSM_REPO ($PZSM_REF)"
-  pct exec "$CTID" -- bash -c "apt-get update -qq && apt-get install -y -qq curl ca-certificates >/dev/null"
+  pct exec "$CTID" -- env LANG=C.UTF-8 LC_ALL=C.UTF-8 DEBIAN_FRONTEND=noninteractive bash -c "apt-get update -qq && apt-get install -y -qq curl ca-certificates >/dev/null"
   pct exec "$CTID" -- env "${INSTALL_ENV[@]}" bash -c "curl -fsSL '$RAW_BASE/$PZSM_REF/install/lxc-install.sh' -o /root/lxc-install.sh && bash /root/lxc-install.sh"
 fi
 
