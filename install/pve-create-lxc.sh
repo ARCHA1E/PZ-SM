@@ -3,7 +3,7 @@
 # and installs PZSM natively inside it (systemd, no Docker).
 #
 #   ./install/pve-create-lxc.sh                       # from a checkout on the PVE host
-#   PZSM_REPO=https://github.com/<you>/pzsm.git ./pve-create-lxc.sh
+#   PZSM_REPO=https://github.com/ARCHA1E/PZ-SM.git ./pve-create-lxc.sh
 #
 # Knobs (environment): CTID, CT_HOSTNAME, CT_STORAGE, CT_TEMPLATE_STORAGE, CT_BRIDGE,
 # CT_IP (dhcp | 192.168.1.50/24), CT_GW, CT_CORES, CT_MEMORY (MB), CT_SWAP, CT_DISK (GB),

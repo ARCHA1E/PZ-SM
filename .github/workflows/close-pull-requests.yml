@@ -1,0 +1,18 @@
+# Outside contributions are not accepted (see CONTRIBUTING.md): close PRs from anyone but the owner.
+# Uses pull_request_target with no checkout, so no code from the PR is ever run.
+name: Close pull requests
+on:
+  pull_request_target:
+    types: [opened, reopened]
+permissions:
+  pull-requests: write
+jobs:
+  close:
+    if: github.event.pull_request.user.login != github.repository_owner
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.html_url }}
+        run: |
+          gh pr close "$PR" --comment "Thanks for your interest! This repository doesn't accept outside contributions (see CONTRIBUTING.md), but you're welcome to keep your changes in your fork."

@@ -4,7 +4,7 @@
 #   Run as root inside the container, from a checkout of this repository:
 #     ./install/lxc-install.sh
 #   or from a git URL:
-#     PZSM_REPO=https://github.com/<you>/pzsm.git bash lxc-install.sh
+#     PZSM_REPO=https://github.com/ARCHA1E/PZ-SM.git bash lxc-install.sh
 #
 # Re-running the script upgrades PZSM in place (data is kept).
 #

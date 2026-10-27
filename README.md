@@ -1,4 +1,4 @@
-# PZSM: Project Zomboid Server Manager (Build 42)
+# PZ-SM: Project Zomboid Server Manager (Build 42)
 
 A self-hosted manager and web panel for one **Project Zomboid Build 42 dedicated server** (tested on 42.21, Steam build 25485538). It runs as a single Docker container, or natively in a Proxmox LXC.
 
@@ -46,6 +46,7 @@ The panel never hides anything. Keys found in your files that no schema describe
 ## Quick start (Docker Compose)
 
 ```bash
+git clone https://github.com/ARCHA1E/PZ-SM.git && cd PZ-SM
 cp .env.example .env        # set PZSM_ADMIN_PASSWORD (or create it in the browser)
 docker compose up -d --build
 ```
@@ -151,3 +152,8 @@ install/             native LXC installer, Proxmox helper
 - There is one admin account for the panel. The password is stored as an scrypt hash, sessions use httpOnly SameSite=Strict cookies, and login attempts are rate-limited.
 - If you expose the panel, put it behind an HTTPS reverse proxy and set `TRUST_PROXY=1` and `PZSM_SECURE_COOKIES=1`.
 - Secrets (`Password`, `RCONPassword`, `DiscordToken`, `WebhookAddress`) are masked in the UI and the audit log.
+
+## License and contributions
+
+PZ-SM is released under the [MIT license](LICENSE). Fork it and adapt it as you like.
+This repository doesn't accept pull requests or other outside contributions (see [CONTRIBUTING.md](CONTRIBUTING.md)).
