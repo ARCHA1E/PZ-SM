@@ -81,7 +81,10 @@ async function readText(p: string): Promise<string | null> {
 async function scanMod(root: string, folder: string, gameVersion: string, workshopId?: string): Promise<ScannedMod | null> {
   const dirs = listDirs(root);
   const versionDir = selectVersionDir(dirs, gameVersion);
-  const infoPath = versionDir && existsSync(join(root, versionDir, 'mod.info')) ? join(root, versionDir, 'mod.info') : join(root, 'mod.info');
+  // B42 mods keep mod.info in the chosen version folder, in common/, or (B41 style) at the root.
+  const infoDir = [versionDir ? join(root, versionDir) : null, join(root, 'common'), root].find((d): d is string => !!d && existsSync(join(d, 'mod.info')));
+  if (!infoDir) return null;
+  const infoPath = join(infoDir, 'mod.info');
   const text = await readText(infoPath);
   if (text === null) return null;
   const info = parseModInfo(text);
@@ -120,7 +123,7 @@ async function scanMod(root: string, folder: string, gameVersion: string, worksh
       maps.push({ folder: mf, title: p.title ?? mf, description: p.description, lots: p.lots, hasSpawnpoints: existsSync(join(md, mf, 'spawnpoints.lua')), dir: join(md, mf) });
     }
   }
-  const posterBase = versionDir ? join(root, versionDir) : root;
+  const posterBase = infoDir;
   const poster = info.posters[0] && existsSync(join(posterBase, info.posters[0])) ? join(posterBase, info.posters[0]) : undefined;
   return {
     info,
@@ -268,7 +271,11 @@ export async function modsView(): Promise<ModsView> {
       inServerConfig: state.workshopItems.includes(wid),
     };
   });
-  for (const wid of state.workshopItems) if (!workshop.find((w) => w.workshopId === wid)?.installed) problems.push(`Workshop item ${wid} is configured but not downloaded yet`);
+  for (const wid of state.workshopItems) {
+    if (workshop.find((w) => w.workshopId === wid)?.installed) continue;
+    const onDisk = existsSync(join(installPaths().workshopContent, wid));
+    problems.push(onDisk ? `Workshop item ${wid} is downloaded but contains no mod PZ-SM can read (no mod.info found)` : `Workshop item ${wid} is configured but not downloaded yet`);
+  }
 
   return {
     mods: entries.sort((a, b) => Number(b.enabled) - Number(a.enabled) || a.name.localeCompare(b.name)),
