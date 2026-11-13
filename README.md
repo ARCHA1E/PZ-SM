@@ -18,7 +18,7 @@ The panel never hides anything. Keys found in your files that no schema describe
 
 ## Features
 
-- **Web panel**: top navigation, dull green dark/light themes, and hover tooltips on every setting (description, default, range, and whether it applies live or on restart).
+- **Web panel**: top navigation, navy and burnt-orange dark/light themes, and hover tooltips on every setting (description, default, range, and whether it applies live or on restart).
 - **Dashboard**: start/stop/restart (with in-game countdown), crash auto-restart, CPU, RAM and player history, update notices.
 - **Console**: live output over WebSocket, and commands over RCON with autocomplete from the build's command list.
 - **Server Settings / Sandbox**: typed forms grouped like the in-game UI, plus one page per mod. Also: search, "changed from default" filter, reset to default, and live vs restart badges.

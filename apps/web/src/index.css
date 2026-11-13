@@ -3,30 +3,32 @@
 @tailwind utilities;
 
 :root {
-  /* Light: dry field / faded khaki */
-  --bg: 228 231 221;
-  --panel: 240 241 235;
-  --panel2: 221 225 212;
-  --line: 194 199 183;
-  --fg: 38 43 34;
-  --muted: 98 106 90;
-  --accent: 88 110 64;
-  --ok: 72 118 70;
-  --warn: 158 114 34;
-  --bad: 164 62 52;
+  /* Light: overcast sky, faded navy ink, burnt orange */
+  --bg: 231 234 242;
+  --panel: 245 246 250;
+  --panel2: 223 228 238;
+  --line: 194 201 218;
+  --fg: 20 24 48;
+  --muted: 86 96 122;
+  --accent: 186 102 32;
+  --glow: 49 91 126;
+  --ok: 46 128 92;
+  --warn: 168 120 18;
+  --bad: 186 58 58;
 }
 .dark {
-  /* Dark: overgrown concrete, dull sage */
-  --bg: 19 22 18;
-  --panel: 27 31 26;
-  --panel2: 35 40 33;
-  --line: 52 59 49;
-  --fg: 208 214 198;
-  --muted: 128 137 119;
-  --accent: 140 162 108;
-  --ok: 118 163 108;
-  --warn: 199 162 84;
-  --bad: 194 98 86;
+  /* Dark: rainy night navy, steel blue, burnt orange (from the game's key art) */
+  --bg: 15 17 40;
+  --panel: 22 26 54;
+  --panel2: 30 36 70;
+  --line: 45 53 90;
+  --fg: 236 238 243;
+  --muted: 146 155 172;
+  --accent: 222 136 56;
+  --glow: 49 91 126;
+  --ok: 104 186 142;
+  --warn: 230 192 86;
+  --bad: 232 100 100;
 }
 
 html,
@@ -38,8 +40,8 @@ body {
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-size: 14px;
   background-color: rgb(var(--bg));
-  background-image: radial-gradient(1200px 500px at 10% -10%, rgb(var(--accent) / 0.07), transparent 60%),
-    radial-gradient(900px 400px at 100% 0%, rgb(var(--accent) / 0.04), transparent 60%);
+  background-image: radial-gradient(1200px 520px at 10% -10%, rgb(var(--glow) / 0.28), transparent 60%),
+    radial-gradient(900px 420px at 100% 0%, rgb(var(--accent) / 0.06), transparent 60%);
   background-attachment: fixed;
 }
 ::-webkit-scrollbar {

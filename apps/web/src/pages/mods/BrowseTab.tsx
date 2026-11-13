@@ -144,7 +144,7 @@ export function BrowseTab({ onOpen, onInstall }: { onOpen: (id: string) => void;
           {data.items.length === 0 ? (
             <Empty>Nothing found. Try fewer tags or a different search.</Empty>
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
               {data.items.map((it) => (
                 <BrowseCard key={it.workshopId} item={it} onOpen={() => onOpen(it.workshopId)} onInstall={() => onInstall([it.workshopId])} />
               ))}
@@ -179,21 +179,23 @@ function Pager({ page, totalPages, onPage }: { page: number; totalPages: number;
 function BrowseCard({ item, onOpen, onInstall }: { item: WorkshopBrowseItem; onOpen: () => void; onInstall: () => void }) {
   const b41only = item.tags.includes('Build 41') && !item.tags.includes('Build 42');
   return (
-    <div className="card group flex overflow-hidden transition hover:border-accent/50">
-      <button className="relative w-28 shrink-0 bg-panel2" onClick={onOpen} aria-label={`Details for ${item.title}`}>
-        {item.preview ? <img src={item.preview} className="h-full w-full object-cover" alt="" loading="lazy" referrerPolicy="no-referrer" /> : <Boxes className="m-auto h-8 w-8 text-muted" />}
-        {item.isCollection && (
-          <span className="absolute bottom-1 left-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white">
-            {item.numChildren} items
-          </span>
+    <div className="card group flex flex-col overflow-hidden transition hover:border-accent/60">
+      {/* Steam shows Workshop previews in a square frame; keep that and show the whole image. */}
+      <button className="relative aspect-square w-full overflow-hidden border-b border-line/80 bg-bg" onClick={onOpen} aria-label={`Details for ${item.title}`}>
+        {item.preview ? (
+          <img src={item.preview} className="h-full w-full object-contain transition duration-300 group-hover:scale-[1.03]" alt="" loading="lazy" referrerPolicy="no-referrer" />
+        ) : (
+          <Boxes className="m-auto h-10 w-10 text-muted" />
         )}
+        {item.isCollection && <span className="absolute bottom-1.5 left-1.5 rounded bg-black/75 px-1.5 py-0.5 text-[10px] text-white">{item.numChildren} items</span>}
+        {b41only && <span className="absolute right-1.5 top-1.5 rounded bg-warn/90 px-1.5 py-0.5 text-[10px] font-medium text-bg">B41 only</span>}
       </button>
-      <div className="flex min-w-0 flex-1 flex-col p-3">
-        <button className="text-left text-sm font-semibold leading-snug hover:text-accent" onClick={onOpen}>
+      <div className="flex min-w-0 flex-1 flex-col p-2.5">
+        <button className="text-left text-[13px] font-semibold leading-snug hover:text-accent" onClick={onOpen} title={item.title}>
           <span className="line-clamp-2">{item.title}</span>
         </button>
         <div className="mt-0.5 truncate text-xs text-muted">by {item.author.name ?? item.author.steamid}</div>
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted">
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-muted">
           {!!item.stars && (
             <span className="inline-flex items-center gap-0.5">
               <Star className="h-3 w-3 fill-current text-warn" />
@@ -208,36 +210,35 @@ function BrowseCard({ item, onOpen, onInstall }: { item: WorkshopBrowseItem; onO
               </span>
             </Tooltip>
           )}
-          {item.timeUpdated && <span>upd. {fmtDay(item.timeUpdated)}</span>}
+          {item.timeUpdated && <span>{fmtDay(item.timeUpdated)}</span>}
           {!!item.size && <span>{fmtBytes(item.size)}</span>}
         </div>
         <div className="mt-1.5 flex flex-wrap gap-1">
           {item.tags
             .filter((t) => !/^Build 4[0-2]$/.test(t))
-            .slice(0, 4)
+            .slice(0, 3)
             .map((t) => (
               <Badge key={t} className="text-[10px]">
                 {t}
               </Badge>
             ))}
-          {b41only && <Badge tone="warn">B41 only</Badge>}
           {!!item.numChildren && !item.isCollection && (
             <Tooltip content="This item lists other Workshop items it needs. They're added automatically when you install it.">
               <Badge tone="accent">+{item.numChildren} required</Badge>
             </Tooltip>
           )}
         </div>
-        <div className="mt-auto flex items-center justify-end pt-2">
+        <div className="mt-auto pt-2.5">
           {item.installed ? (
-            <Badge tone="ok">
+            <Badge tone="ok" className="w-full justify-center py-1">
               <Check className="h-3 w-3" /> Installed
             </Badge>
           ) : item.inServer ? (
-            <Button className="px-2 py-1 text-xs" onClick={onInstall}>
+            <Button className="w-full py-1 text-xs" onClick={onInstall}>
               <Download className="h-3.5 w-3.5" /> Download
             </Button>
           ) : (
-            <Button variant="primary" className="px-2 py-1 text-xs" onClick={onInstall}>
+            <Button variant="primary" className="w-full py-1 text-xs" onClick={onInstall}>
               <Plus className="h-3.5 w-3.5" /> Install
             </Button>
           )}
