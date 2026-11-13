@@ -50,10 +50,8 @@ async function runJob(e: ScheduleEntry): Promise<void> {
     case 'game-update-check': {
       const r = await checkGameUpdate();
       if (r.updateAvailable && p.autoUpdate) {
-        if (supervisor.state === 'running') {
-          await supervisor.restartWithWarnings('Game update').catch(() => undefined);
-          await supervisor.stop({ reason: 'game update' });
-        }
+        // Warn players first; installOrUpdate stops the server, updates and starts it again.
+        if (supervisor.state === 'running') await supervisor.warnCountdown('Game update').catch(() => undefined);
         await installOrUpdate({ restart: true });
       }
       break;

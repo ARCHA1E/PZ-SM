@@ -26,7 +26,7 @@ import { listPlayers } from '../services/players.js';
 import { q } from '../services/rcon.js';
 import { deleteSchedule, listSchedules, runScheduleNow, saveSchedule } from '../services/scheduler.js';
 import { applySandboxSettings, applyServerSettings, sandboxSettingsView, serverSettingsView, addMissingSandboxDefaults } from '../services/settingsRegistry.js';
-import { getCollectionItems, getPublishedFileDetails, parseWorkshopRef } from '../services/steam.js';
+import { cachedBranches, fetchBranches, getCollectionItems, getPublishedFileDetails, parseWorkshopRef } from '../services/steam.js';
 import { supervisor } from '../services/supervisor.js';
 import { currentTask, runTask, taskLog } from '../services/tasks.js';
 import { readSandbox, replaceSandboxText } from '../services/configStore.js';
@@ -93,6 +93,11 @@ export async function apiRoutes(app: FastifyInstance) {
     return { ok: true };
   });
   app.post('/api/server/check-update', async () => checkGameUpdate());
+  app.get('/api/server/branches', async () => cachedBranches());
+  app.post('/api/server/branches/refresh', async () => {
+    await fetchBranches();
+    return cachedBranches();
+  });
 
   // ---------------------------------------------------------------- build analysis
   app.get('/api/build', async () => {

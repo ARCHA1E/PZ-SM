@@ -76,7 +76,13 @@ export default function Dashboard() {
       {status.state === 'crashed' && (
         <Notice tone="bad">
           <AlertTriangle className="mr-1 inline h-4 w-4" />
-          The server exited unexpectedly (code {String(status.lastExitCode)}). Check the <Link className="underline" to="/console">console</Link>.
+          {status.lastError ? (
+            status.lastError
+          ) : (
+            <>
+              The server exited unexpectedly (code {String(status.lastExitCode)}). Check the <Link className="underline" to="/console">console</Link>.
+            </>
+          )}
         </Notice>
       )}
 

@@ -79,6 +79,8 @@ export interface ServerStatus {
   updateAvailable?: boolean;
   modUpdatesAvailable?: number;
   lastExitCode?: number | null;
+  /** A startup problem that restarting will not fix (e.g. world from a newer game version). */
+  lastError?: string;
   task?: TaskInfo | null;
 }
 
@@ -339,4 +341,13 @@ export interface ConfigImportOptions {
   downloadMods: boolean;
   /** Start the server when done (it is restarted anyway if it was running). */
   startAfter: boolean;
+}
+
+/** A Steam branch of the dedicated server app (public, pre-release, 42.21, legacy41…). */
+export interface SteamBranch {
+  name: string;
+  buildId: string;
+  description?: string;
+  timeUpdated?: number;
+  passwordRequired: boolean;
 }

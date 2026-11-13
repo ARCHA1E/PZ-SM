@@ -11,31 +11,44 @@ import { runTask } from './tasks.js';
 
 export async function installOrUpdate(opts: { validate?: boolean; restart?: boolean } = {}): Promise<void> {
   const wasRunning = supervisor.running;
-  await runTask(supervisor.installed() ? 'update' : 'install', supervisor.installed() ? 'Update game server' : 'Install game server', async (ctx) => {
-    if (wasRunning) {
-      ctx.log('Stopping server for update');
-      await supervisor.stop({ reason: 'update' });
-    }
-    if (supervisor.installed() && (await getManifest())) {
-      try {
-        await createBackup('pre-update', 'Before game update', ctx);
-      } catch (e) {
-        ctx.log(`Backup skipped: ${(e as Error).message}`);
+  let failure: unknown;
+  try {
+    await runTask(supervisor.installed() ? 'update' : 'install', supervisor.installed() ? 'Update game server' : 'Install game server', async (ctx) => {
+      if (wasRunning) {
+        ctx.log('Stopping server for update');
+        await supervisor.stop({ reason: 'update' });
       }
-    }
-    const before = await readInstalledBuild();
-    await installOrUpdateServer(ctx, { validate: opts.validate });
-    const after = await readInstalledBuild();
-    ctx.log(`Build ${before?.buildId ?? '(none)'} → ${after?.buildId ?? '?'}`);
-    ctx.log('Analyzing build…');
-    const m = await analyzeBuild();
-    const sum = summarize(m);
-    ctx.log(`Found ${sum.serverOptions} server options, ${sum.sandboxOptions} sandbox options, ${sum.commands} commands, ${sum.capabilities} capabilities (game ${m.version ?? '?'})`);
-    if (sum.diff && (sum.diff.added.length || sum.diff.removed.length)) ctx.log(`Changes vs previous build: +${sum.diff.added.length} / -${sum.diff.removed.length} options`);
-    kvSet('update_available', false);
-    audit('server.update', `${before?.buildId ?? 'none'} → ${after?.buildId}`);
-  });
-  if (wasRunning || opts.restart) await supervisor.start('after-update');
+      if (supervisor.installed() && (await getManifest())) {
+        try {
+          await createBackup('pre-update', 'Before game update', ctx);
+        } catch (e) {
+          ctx.log(`Backup skipped: ${(e as Error).message}`);
+        }
+      }
+      const before = await readInstalledBuild();
+      await installOrUpdateServer(ctx, { validate: opts.validate });
+      const after = await readInstalledBuild();
+      ctx.log(`Build ${before?.buildId ?? '(none)'} → ${after?.buildId ?? '?'}`);
+      ctx.log('Analyzing build…');
+      const m = await analyzeBuild();
+      const sum = summarize(m);
+      ctx.log(`Found ${sum.serverOptions} server options, ${sum.sandboxOptions} sandbox options, ${sum.commands} commands, ${sum.capabilities} capabilities (game ${m.version ?? '?'})`);
+      if (sum.diff && (sum.diff.added.length || sum.diff.removed.length)) ctx.log(`Changes vs previous build: +${sum.diff.added.length} / -${sum.diff.removed.length} options`);
+      invalidateModScan();
+      kvSet('update_available', false);
+      audit('server.update', `${before?.buildId ?? 'none'} → ${after?.buildId}`);
+    });
+  } catch (e) {
+    failure = e;
+    audit('server.update.failed', (e as Error).message);
+  }
+  // Bring the server back whether or not the update worked: a failed SteamCMD job leaves
+  // the installed build untouched, and an offline server is worse than an outdated one.
+  if ((wasRunning || (opts.restart && !failure)) && supervisor.installed() && (supervisor.state === 'stopped' || supervisor.state === 'crashed')) {
+    if (failure) supervisor.sys(`Update failed (${(failure as Error).message}); starting the server again on the installed build`);
+    await supervisor.start(failure ? 'after failed update' : 'after-update').catch((e) => supervisor.sys(`Start failed: ${(e as Error).message}`));
+  }
+  if (failure) throw failure;
 }
 
 export async function checkGameUpdate(): Promise<{ installed?: string; latest?: string; updateAvailable: boolean }> {

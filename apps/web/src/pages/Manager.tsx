@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { AuditEntry, BuildManifestSummary, ManagerSettings } from '@pzsm/shared';
+import type { AuditEntry, BuildManifestSummary, ManagerSettings, SteamBranch } from '@pzsm/shared';
 import { useEffect, useState } from 'react';
 import { get, post, put, toast, toastError, useLive } from '../api';
 import { ActionButton, Badge, Card, Field, Loading, Notice, PageHeader, Toggle } from '../components/ui';
@@ -17,6 +17,9 @@ export default function Manager() {
   const q = useQuery({ queryKey: ['manager'], queryFn: () => get<MgrResp>('/api/manager/settings') });
   const build = useQuery({ queryKey: ['build'], queryFn: () => get<{ manifest: BuildManifestSummary | null; warnings?: string[] }>('/api/build') });
   const audit = useQuery({ queryKey: ['audit'], queryFn: () => get<{ entries: AuditEntry[] }>('/api/audit?limit=100') });
+  const branches = useQuery({ queryKey: ['branches'], queryFn: () => get<{ branches: SteamBranch[]; fetchedAt?: string }>('/api/server/branches') });
+  const branchList = branches.data?.branches ?? [];
+  const [customBranch, setCustomBranch] = useState(false);
   const [s, setS] = useState<ManagerSettings | null>(null);
   const [showAdmin, setShowAdmin] = useState(false);
   const [pw, setPw] = useState({ current: '', next: '' });
@@ -104,8 +107,37 @@ export default function Manager() {
             <Field label="Automatic backups to keep">
               <input className="input" type="number" min={1} value={s.backupRetention} onChange={(e) => set('backupRetention', Number(e.target.value))} />
             </Field>
-            <Field label="Steam branch" hint="public, unstable, legacy41, or a pinned build branch">
-              <input className="input" value={s.branch} onChange={(e) => set('branch', e.target.value)} />
+            <Field
+              label="Steam branch"
+              hint={
+                <>
+                  Which game version to install. Players must be on the same version. Save, then use "Update now" to switch.{' '}
+                  <button type="button" className="text-accent underline" onClick={() => post('/api/server/branches/refresh').then(() => branches.refetch(), toastError)}>
+                    Refresh list
+                  </button>
+                </>
+              }
+            >
+              {branchList.length > 0 && !customBranch ? (
+                <select
+                  className="input"
+                  value={s.branch || 'public'}
+                  onChange={(e) => (e.target.value === '__custom' ? setCustomBranch(true) : set('branch', e.target.value))}
+                >
+                  {!branchList.some((b) => b.name === (s.branch || 'public')) && <option value={s.branch}>{s.branch} (not listed by Steam)</option>}
+                  {branchList.map((b) => (
+                    <option key={b.name} value={b.name}>
+                      {b.name}
+                      {b.name === 'public' ? ' (stable)' : ''}
+                      {b.description ? ` · ${b.description}` : ''} · build {b.buildId}
+                      {b.passwordRequired ? ' · password' : ''}
+                    </option>
+                  ))}
+                  <option value="__custom">Other…</option>
+                </select>
+              ) : (
+                <input className="input" value={s.branch} onChange={(e) => set('branch', e.target.value)} placeholder="public" />
+              )}
             </Field>
             <Field label="Branch password">
               <input className="input" type="password" value={s.branchPassword} onChange={(e) => set('branchPassword', e.target.value)} />

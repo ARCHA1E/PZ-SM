@@ -1,10 +1,11 @@
 /** SteamCMD (install/update/workshop downloads) and the public Steam Web API. */
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { readFile, rename, rm } from 'node:fs/promises';
 import { parseVdf, type VdfObject } from '@pzsm/pz-formats';
+import type { SteamBranch } from '@pzsm/shared';
 import { config } from '../config.js';
-import { db, getSettings } from '../db.js';
+import { db, getSettings, kvGet, kvSet } from '../db.js';
 import { installPaths } from './paths.js';
 import type { TaskContext } from './tasks.js';
 
@@ -42,22 +43,62 @@ export function runSteamcmd(args: string[], ctx?: TaskContext): Promise<{ code: 
   });
 }
 
+/** Tunables (exported for tests). */
+export const steamLimits = { retryDelayMs: 5000 };
+
 /** Install or update the dedicated server on the configured branch. */
 export async function installOrUpdateServer(ctx: TaskContext, opts: { validate?: boolean } = {}): Promise<void> {
   const s = getSettings();
   mkdirSync(config.installDir, { recursive: true });
   const update = ['+app_update', String(config.steamAppId)];
-  if (s.branch && s.branch !== 'public') {
-    update.push('-beta', s.branch);
-    if (s.branchPassword) update.push('-betapassword', s.branchPassword);
+  // Always name the branch: without "-beta public" SteamCMD stays on whatever branch the
+  // install was last switched to.
+  update.push('-beta', s.branch || 'public');
+  if (s.branch && s.branch !== 'public' && s.branchPassword) update.push('-betapassword', s.branchPassword);
+  const known = kvGet<{ branches: SteamBranch[] } | null>('steam_branches', null)?.branches ?? [];
+  if (known.length && !known.some((b) => b.name === (s.branch || 'public'))) {
+    ctx.log(`Note: Steam does not list a branch named "${s.branch}" (available: ${known.map((b) => b.name).join(', ')})`);
   }
-  if (opts.validate ?? s.validateOnUpdate) update.push('validate');
-  const args = ['+force_install_dir', config.installDir, '+login', 'anonymous', ...update, '+quit'];
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    const { code, output } = await runSteamcmd(args, ctx);
-    if (/Success! App '\d+' (fully installed|already up to date)/.test(output) || (config.dryRun && code === 0)) return;
-    ctx.log(`SteamCMD exited with ${code}; attempt ${attempt}/3`);
-    if (/Invalid platform|No subscription|Invalid Password/i.test(output)) break;
+  const manifest = installPaths().appManifest;
+  const manifestBak = `${manifest}.pzsm.bak`;
+  // 1. As requested (a fast delta update when possible).
+  // 2. With validate. A delta update needs the manifest of the build that is installed now;
+  //    once that build leaves the branch Steam refuses it ("Access Denied", app state 0x6)
+  //    unless SteamCMD still has it cached. Validating against the new build doesn't need it.
+  // 3. Forget the install record and validate, so SteamCMD treats the folder as a fresh
+  //    install and only downloads files that differ.
+  const plans = [
+    { validate: opts.validate ?? s.validateOnUpdate, reset: false },
+    { validate: true, reset: false },
+    { validate: true, reset: true },
+  ];
+  try {
+    for (let i = 0; i < plans.length; i++) {
+      const plan = plans[i];
+      if (plan.reset && existsSync(manifest)) {
+        ctx.log('Resetting the SteamCMD install record and verifying all files');
+        await rename(manifest, manifestBak);
+      }
+      const args = ['+force_install_dir', config.installDir, '+login', 'anonymous', ...update, ...(plan.validate ? ['validate'] : []), '+quit'];
+      const { code, output } = await runSteamcmd(args, ctx);
+      if (/Success! App '\d+' (fully installed|already up to date)/.test(output) || (config.dryRun && code === 0)) {
+        await rm(manifestBak, { force: true });
+        return;
+      }
+      ctx.log(`SteamCMD exited with ${code}; attempt ${i + 1}/${plans.length} failed`);
+      // Retrying cannot fix these.
+      if (/Failed to set beta/i.test(output)) {
+        throw new Error(`Steam has no branch named "${s.branch}" for the dedicated server (or its password is wrong). Pick another branch on the Manager page.`);
+      }
+      if (/Invalid platform|No subscription|Invalid Password/i.test(output)) break;
+      if (i + 1 < plans.length) {
+        if (!plan.validate) ctx.log('Retrying with file validation (slower, but does not need the previous build)');
+        await new Promise((r) => setTimeout(r, steamLimits.retryDelayMs));
+      }
+    }
+  } finally {
+    // A failed reset attempt must not leave the install without its record.
+    if (existsSync(manifestBak) && !existsSync(manifest)) await rename(manifestBak, manifest).catch(() => undefined);
   }
   throw new Error('SteamCMD did not report a successful install (see task log)');
 }
@@ -87,19 +128,42 @@ export async function readInstalledBuild(): Promise<InstalledBuild | null> {
   }
 }
 
-/** Latest public buildid of a branch via `app_info_print` (anonymous). */
-export async function fetchLatestBuildId(branch: string): Promise<string | undefined> {
+/** Branches of the dedicated server app as Steam lists them (anonymous `app_info_print`). */
+export async function fetchBranches(): Promise<SteamBranch[]> {
   const { output } = await runSteamcmd(['+login', 'anonymous', '+app_info_update', '1', '+app_info_print', String(config.steamAppId), '+quit']);
   const start = output.indexOf(`"${config.steamAppId}"`);
-  if (start < 0) return undefined;
+  if (start < 0) return [];
   try {
     const v = parseVdf(output.slice(start));
     const app = v[String(config.steamAppId)] as VdfObject;
-    const branches = ((app.depots as VdfObject)?.branches ?? {}) as VdfObject;
-    return ((branches[branch || 'public'] as VdfObject)?.buildid as string) ?? undefined;
+    const raw = ((app.depots as VdfObject)?.branches ?? {}) as VdfObject;
+    const branches: SteamBranch[] = Object.entries(raw)
+      .filter(([, b]) => typeof b === 'object')
+      .map(([name, b]) => {
+        const o = b as VdfObject;
+        return {
+          name,
+          buildId: String(o.buildid ?? ''),
+          description: typeof o.description === 'string' ? o.description : undefined,
+          timeUpdated: o.timeupdated ? Number(o.timeupdated) : undefined,
+          passwordRequired: o.pwdrequired === '1',
+        };
+      });
+    if (branches.length) kvSet('steam_branches', { branches, fetchedAt: new Date().toISOString() });
+    return branches;
   } catch {
-    return undefined;
+    return [];
   }
+}
+
+export function cachedBranches(): { branches: SteamBranch[]; fetchedAt?: string } {
+  return kvGet<{ branches: SteamBranch[]; fetchedAt?: string }>('steam_branches', { branches: [] });
+}
+
+/** Latest buildid of a branch. */
+export async function fetchLatestBuildId(branch: string): Promise<string | undefined> {
+  const branches = await fetchBranches();
+  return branches.find((b) => b.name === (branch || 'public'))?.buildId || undefined;
 }
 
 // ---------------------------------------------------------------- Steam Web API

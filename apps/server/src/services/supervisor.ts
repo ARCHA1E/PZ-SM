@@ -22,6 +22,15 @@ const MAX_CONSOLE = 5000;
 /** Lines that indicate the server finished loading and accepts players. */
 const READY_PATTERNS = [/\*{3}\s*SERVER STARTED\s*\*{3}/i, /Server Steam ID/i, /server is listening on port/i];
 
+/** Startup failures that restarting will not fix, with what to do about them. */
+const FATAL_PATTERNS: { re: RegExp; message: string }[] = [
+  {
+    re: /savefile appears to be from a newer version of the game/i,
+    message:
+      'This world was saved by a newer game version than the one installed, so it cannot be loaded. Update the game server (Manager → Steam branch / Update now), or restore a backup taken before the world was opened on the newer version.',
+  },
+];
+
 class Supervisor {
   state: ServerState = 'stopped';
   private proc: ChildProcessWithoutNullStreams | null = null;
@@ -32,6 +41,8 @@ class Supervisor {
   private rcon: RconClient | null = null;
   private crashTimes: number[] = [];
   lastExitCode: number | null = null;
+  /** Set when the server reported a problem that a restart will not fix. */
+  fatalError: string | null = null;
   pendingRestart = false;
   players: string[] = [];
   /** Run (in order) before every launch, e.g. applying queued role changes. */
@@ -85,6 +96,7 @@ class Supervisor {
       pendingRestart: this.pendingRestart,
       pendingRoleChanges: 0,
       lastExitCode: this.lastExitCode,
+      lastError: this.fatalError ?? undefined,
       task: currentTask(),
     };
   }
@@ -175,6 +187,7 @@ class Supervisor {
     const l = this.buildLaunch();
     kvSet('oneshot_jvm_args', []);
     this.stopRequested = false;
+    this.fatalError = null;
     this.players = [];
     this.pendingRestart = false;
     this.setState('starting');
@@ -207,6 +220,7 @@ class Supervisor {
         bus.emit('serverStarted');
       }
       if (/RCON: listening on port/.test(line)) void this.connectRcon();
+      for (const f of FATAL_PATTERNS) if (f.re.test(line)) this.fatalError = f.message;
     }
   }
 
@@ -227,7 +241,10 @@ class Supervisor {
       const now = Date.now();
       this.crashTimes = this.crashTimes.filter((t) => now - t < 10 * 60_000);
       this.crashTimes.push(now);
-      if (s.restartOnCrash && this.crashTimes.length <= 3) {
+      if (this.fatalError) {
+        // Restarting cannot fix this; say why instead of crash-looping.
+        this.sys(this.fatalError);
+      } else if (s.restartOnCrash && this.crashTimes.length <= 3) {
         this.sys('Restarting after crash in 10s…');
         setTimeout(() => {
           if (this.state === 'crashed') void this.start('crash-recovery').catch((e) => this.sys(`Restart failed: ${(e as Error).message}`));
@@ -333,19 +350,30 @@ class Supervisor {
     await this.start(reason);
   }
 
-  /** Broadcast countdown messages, then restart. */
-  async restartWithWarnings(reason: string, minutes?: number[]): Promise<void> {
+  /**
+   * Broadcast the countdown messages and wait them out. Returns false if the server stopped
+   * running in the meantime. Skipped entirely when nobody is online.
+   */
+  async warnCountdown(reason: string, minutes?: number[]): Promise<boolean> {
     const s = getSettings();
     const marks = [...(minutes ?? s.restartWarningMinutes)].filter((m) => m > 0).sort((a, b) => b - a);
-    if (this.state === 'running' && marks.length) {
-      for (let i = 0; i < marks.length; i++) {
-        const msg = s.restartWarningMessage.replace('{minutes}', String(marks[i])).replace('{reason}', reason);
-        await this.command(`servermsg "${msg.replace(/"/g, "'")}"`).catch(() => undefined);
-        const wait = (marks[i] - (marks[i + 1] ?? 0)) * 60_000;
-        await new Promise((r) => setTimeout(r, wait));
-        if (this.state !== 'running') return;
-      }
+    if (this.state !== 'running' || !marks.length) return this.state === 'running';
+    const online = await this.refreshPlayers().catch(() => this.players);
+    if (!online.length) return true;
+    for (let i = 0; i < marks.length; i++) {
+      const msg = s.restartWarningMessage.replace('{minutes}', String(marks[i])).replace('{reason}', reason);
+      await this.command(`servermsg "${msg.replace(/"/g, "'")}"`).catch(() => undefined);
+      const wait = (marks[i] - (marks[i + 1] ?? 0)) * 60_000;
+      await new Promise((r) => setTimeout(r, wait));
+      if (this.state !== 'running') return false;
     }
+    return true;
+  }
+
+  /** Broadcast countdown messages, then restart. */
+  async restartWithWarnings(reason: string, minutes?: number[]): Promise<void> {
+    const wasRunning = this.state === 'running';
+    if (!(await this.warnCountdown(reason, minutes)) && wasRunning) return;
     await this.restart(reason);
   }
 }

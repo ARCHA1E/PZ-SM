@@ -1,6 +1,6 @@
 # PZ-SM: Project Zomboid Server Manager (Build 42)
 
-A self-hosted manager and web panel for one **Project Zomboid Build 42 dedicated server** (tested on 42.21, Steam build 25485538). It runs as a single Docker container, or natively in a Proxmox LXC.
+A self-hosted manager and web panel for one **Project Zomboid Build 42 dedicated server** (tested on 42.21 and 42.22.2, Steam build 26486687). It runs as a single Docker container, or natively in a Proxmox LXC.
 
 PZSM learns the server's capabilities from the installed game itself, so new builds and mods need no code changes:
 
@@ -70,6 +70,7 @@ data/server    game install + workshop downloads
 data/zomboid   Zomboid cachedir: Server/<name>.ini, Saves/, db/, Logs/
 data/manager   PZSM database (settings, schedules, audit, metrics)
 data/backups   backup archives
+data/steam     SteamCMD state (lets game updates apply as small deltas)
 ```
 
 ### Memory
@@ -149,6 +150,22 @@ Zip the server's files from `%USERPROFILE%\Zomboid`, keeping the folder structur
 3. Upload the zip. It is renamed to the PZSM server name, and a backup of the current world is taken first.
 4. Go to **Mods → Download / update all**. PZSM reads `WorkshopItems=` and fetches everything.
 5. Start the server.
+
+## Game updates and versions
+
+Players can only join when their game is on the same version as the server, and Steam updates clients automatically. When a new build is released:
+
+1. Check that your mods support it. A build can break mods; the Mods page flags version ranges that no longer match.
+2. In the panel, click **Update now** on the Dashboard or Manager page. PZ-SM stops the server, backs up the config and world, updates through SteamCMD, re-analyzes the build and starts the server again. If the update fails, the server is started again on the build that is installed.
+
+To stay on an older version for a while, pick its branch under **Manager → Steam branch** and click **Update now**. The list comes from Steam, for example `public` (stable), `pre-release` and `42.21`. Your players then have to select the same branch in Steam (game → Properties → Game Versions & Betas).
+
+A world that has been opened by a newer build cannot be loaded by an older one. The game refuses it, and the panel says so. To go back, switch the branch and restore the `pre-update` backup from the Backups page.
+
+How the update itself is made reliable:
+
+- SteamCMD normally applies a small delta, which needs its record of the build that is installed. If Steam refuses that (app state `0x6`, "Access Denied" in SteamCMD's log), PZ-SM retries with file validation, and as a last resort resets the install record and verifies every file.
+- In Docker, SteamCMD's own state is kept in `data/steam`, so it survives recreating the container.
 
 ## How settings stay correct
 
