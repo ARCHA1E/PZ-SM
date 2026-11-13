@@ -15,10 +15,13 @@ const original = {} as Mod['http'];
 beforeAll(async () => {
   m = await import('../src/services/workshopBrowse.js');
   Object.assign(original, m.http);
+  m.communityLimits.gapMs = { browse: 0, item: 0, profile: 0 };
+  m.communityLimits.backgroundGapMs = 0;
 });
 beforeEach(() => {
   Object.assign(m.http, original);
   m.clearBrowseCache();
+  m.resetCommunityQueue();
 });
 
 const reqPage = (...ids: string[]) =>
@@ -172,5 +175,57 @@ describe('resolveInstallPlan', () => {
     expect(by['8000002']).toMatchObject({ reason: 'dependency', via: '8000001' });
     expect(by['8000003']).toMatchObject({ reason: 'dependency', via: '8000002' });
     expect(plan.unavailable).toEqual(['8000099']);
+  });
+});
+
+describe('steamcommunity rate limiting', () => {
+  it('pauses only the rate-limited kind of page and explains it', async () => {
+    let calls = 0;
+    m.http.fetchText = async (url) => {
+      if (url.includes('/workshop/browse')) return 'browse-ok';
+      calls++;
+      throw new m.SteamHttpError(429, url);
+    };
+    // Background refresh of many items: the first 429 starts a cooldown, the rest are skipped.
+    const r = await m.getRequiredItemsDetailed(['91000011', '91000012', '91000013', '91000014', '91000015', '91000016'], { priority: 'low' });
+    expect(calls).toBe(1);
+    expect(r.failed).toHaveLength(6);
+    expect(r.error).toMatch(/rate-limiting Workshop item pages/);
+    expect(m.communityStatus().blocked.item).toBeGreaterThan(Date.now());
+    // Search is a different kind of page and keeps working.
+    await expect(m.communityFetch('https://steamcommunity.com/workshop/browse/?appid=108600')).resolves.toBe('browse-ok');
+  });
+
+  it('warns in the install plan when requirements could not be checked', async () => {
+    m.http.publishedDetails = async (ids) => ids.map((id) => ({ publishedfileid: id, result: 1, title: `T${id}` }));
+    m.http.collectionItems = async () => [];
+    m.http.fetchText = async (url) => {
+      throw new m.SteamHttpError(429, url);
+    };
+    const plan = await m.resolveInstallPlan(['92000001'], { inServer: new Set(), installed: new Set() });
+    expect(plan.items.map((i) => i.workshopId)).toEqual(['92000001']);
+    expect(plan.unchecked).toEqual(['92000001']);
+    expect(plan.warnings?.[0]).toMatch(/could not be checked/);
+  });
+
+  it('lets user requests jump ahead of queued background work', async () => {
+    m.communityLimits.gapMs = { browse: 0, item: 5, profile: 0 };
+    const order: string[] = [];
+    m.http.fetchText = async (url) => {
+      order.push(url);
+      return '';
+    };
+    try {
+      const bg = ['a', 'b', 'c', 'd'].map((x) => m.communityFetch(`https://steamcommunity.com/sharedfiles/filedetails/?id=${x}`, 'low'));
+      const user = m.communityFetch('https://steamcommunity.com/sharedfiles/filedetails/?id=user', 'high');
+      await Promise.all([...bg, user]);
+      expect(order.indexOf('https://steamcommunity.com/sharedfiles/filedetails/?id=user')).toBeLessThanOrEqual(1);
+    } finally {
+      m.communityLimits.gapMs = { browse: 0, item: 0, profile: 0 };
+    }
+  });
+
+  it('reports the cause of network failures instead of "fetch failed"', async () => {
+    await expect(original.fetchText('http://127.0.0.1:59999/')).rejects.toThrow(/Could not reach 127\.0\.0\.1:59999 \(ECONNREFUSED\)/);
   });
 });

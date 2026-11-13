@@ -73,10 +73,11 @@ export async function downloadWorkshop(ids: string[], opts: { validate?: boolean
 export async function refreshWorkshopMeta(ids: string[]): Promise<void> {
   if (!ids.length) return;
   const details = await getPublishedFileDetails(ids);
-  await Promise.all([
-    getRequiredItems(ids).catch(() => ({})),
-    resolvePersonas([...new Set(details.map((d) => d.creator).filter((c): c is string => !!c))]).catch(() => ({})),
-  ]);
+  // Item pages (requirements + creator names) go through the slow background queue; profile
+  // lookups are only needed for creators no item page named.
+  // Requirements rarely change: background refreshes only read pages older than a week.
+  await getRequiredItems(ids, { priority: 'low', maxAgeMs: 7 * 86400_000 }).catch(() => ({}));
+  await resolvePersonas([...new Set(details.map((d) => d.creator).filter((c): c is string => !!c))], 'low').catch(() => ({}));
   kvSet('workshop_meta_refreshed', Date.now());
 }
 

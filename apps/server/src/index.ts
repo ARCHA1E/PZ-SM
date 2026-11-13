@@ -3,11 +3,15 @@ import cookie from '@fastify/cookie';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
 import websocket from '@fastify/websocket';
+import { setDefaultResultOrder } from 'node:dns';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { ZodError } from 'zod';
 import type { TaskInfo, WsMessage } from '@pzsm/shared';
 import { config } from './config.js';
+
+// Containers/LXCs often get IPv6 DNS answers without a working IPv6 route.
+setDefaultResultOrder('ipv4first');
 import { audit, getSettings } from './db.js';
 import {
   bootstrapPassword,

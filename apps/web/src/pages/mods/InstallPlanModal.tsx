@@ -91,6 +91,11 @@ export function InstallPlanModal({ refs, open, onClose, allowInput }: { refs: st
         {!!error && <ErrorBox error={error} />}
         {plan && (
           <>
+            {plan.warnings?.map((w) => (
+              <Notice key={w}>
+                {w}. Those items are listed, but anything they need is missing from this plan. You can install now and use the missing-requirements button on the Installed tab later, or close this and try again in a few minutes.
+              </Notice>
+            ))}
             {plan.unavailable.length > 0 && <Notice tone="bad">Not available on the Workshop (removed, private or wrong id): {plan.unavailable.join(', ')}</Notice>}
             <div className="max-h-[50vh] overflow-y-auto rounded-lg border border-line">
               <table className="table">

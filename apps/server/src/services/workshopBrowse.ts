@@ -45,13 +45,21 @@ export interface RawPublishedFile {
 /** Network access; tests replace these members. */
 export const http = {
   async fetchText(url: string, init?: { method?: string; body?: URLSearchParams }): Promise<string> {
-    const r = await fetch(url, {
-      method: init?.method,
-      body: init?.body,
-      headers: { 'User-Agent': BROWSER_UA, 'Accept-Language': 'en-US,en;q=0.9' },
-      signal: AbortSignal.timeout(20000),
-    });
-    if (!r.ok) throw new Error(`Steam ${r.status} for ${new URL(url).pathname}`);
+    let r: Response;
+    try {
+      r = await fetch(url, {
+        method: init?.method,
+        body: init?.body,
+        headers: { 'User-Agent': BROWSER_UA, Accept: 'text/html,application/json;q=0.9,*/*;q=0.8', 'Accept-Language': 'en-US,en;q=0.9' },
+        signal: AbortSignal.timeout(20000),
+      });
+    } catch (e) {
+      // undici reports every network problem as "fetch failed"; the cause has the detail.
+      const c = (e as { cause?: { code?: string; message?: string } }).cause;
+      const why = (e as Error).name === 'TimeoutError' ? 'timed out after 20s' : c?.code ?? c?.message ?? (e as Error).message;
+      throw new Error(`Could not reach ${new URL(url).host} (${why}). Check the server's internet/DNS access.`);
+    }
+    if (!r.ok) throw new SteamHttpError(r.status, url);
     return r.text();
   },
   /** Keyless ISteamRemoteStorage/GetPublishedFileDetails (any number of ids). */
@@ -70,6 +78,112 @@ export const http = {
   /** Child item ids of a collection ([] when it is not one). */
   collectionItems: (id: string): Promise<string[]> => getCollectionItems(id),
 };
+
+export class SteamHttpError extends Error {
+  constructor(
+    public readonly status: number,
+    url: string,
+  ) {
+    super(`Steam returned HTTP ${status} for ${new URL(url).pathname}`);
+  }
+}
+
+/**
+ * steamcommunity.com rate-limits by IP and per kind of page: item pages answer a burst of
+ * ~20 requests with HTTP 429 for a few minutes (and repeated bursts can earn a 403 on other
+ * pages too). Every request to it goes through one queue with a minimum gap per kind; user
+ * actions jump ahead of background work, and a 403/429 pauses that kind for a cooldown.
+ */
+export type Priority = 'high' | 'low';
+export type CommunityKind = 'browse' | 'item' | 'profile';
+export const communityLimits = {
+  gapMs: { browse: 1000, item: 3000, profile: 3000 } as Record<CommunityKind, number>,
+  /** Background (low priority) item/profile pages wait at least this long between requests. */
+  backgroundGapMs: 6000,
+  cooldownMs: 2 * 60_000,
+  maxCooldownMs: 30 * 60_000,
+};
+const queue: { url: string; kind: CommunityKind; priority: Priority; resolve: (s: string) => void; reject: (e: unknown) => void }[] = [];
+let pumping = false;
+const lastAt: Record<CommunityKind, number> = { browse: 0, item: 0, profile: 0 };
+const blockedUntil: Record<CommunityKind, number> = { browse: 0, item: 0, profile: 0 };
+const strikes: Record<CommunityKind, number> = { browse: 0, item: 0, profile: 0 };
+
+export function kindOf(url: string): CommunityKind {
+  const path = new URL(url).pathname;
+  if (path.startsWith('/workshop/browse')) return 'browse';
+  if (path.startsWith('/profiles/') || path.startsWith('/id/')) return 'profile';
+  return 'item';
+}
+
+export function communityStatus(): { blocked: Partial<Record<CommunityKind, number>>; queued: number } {
+  const now = Date.now();
+  const blocked = Object.fromEntries(Object.entries(blockedUntil).filter(([, t]) => t > now)) as Partial<Record<CommunityKind, number>>;
+  return { blocked, queued: queue.length };
+}
+
+/** For tests. */
+export function resetCommunityQueue(): void {
+  for (const k of ['browse', 'item', 'profile'] as const) {
+    lastAt[k] = 0;
+    blockedUntil[k] = 0;
+    strikes[k] = 0;
+  }
+}
+
+export class SteamRateLimitError extends Error {
+  constructor(
+    public readonly kind: CommunityKind,
+    until: number,
+  ) {
+    const min = Math.max(1, Math.ceil((until - Date.now()) / 60_000));
+    const what = kind === 'browse' ? 'Workshop search' : kind === 'item' ? 'Workshop item pages' : 'Steam profile pages';
+    super(
+      `Steam is rate-limiting ${what} from this server's IP (HTTP 403/429 after too many requests). PZ-SM pauses those requests for about ${min} minute(s); try again then.` +
+        (kind === 'browse' ? ' A Steam Web API key on the Manager page lets search use Steam\'s API instead.' : ''),
+    );
+  }
+}
+
+async function pump(): Promise<void> {
+  if (pumping) return;
+  pumping = true;
+  try {
+    while (queue.length) {
+      const i = queue.findIndex((q) => q.priority === 'high');
+      const job = queue.splice(i >= 0 ? i : 0, 1)[0];
+      if (blockedUntil[job.kind] > Date.now()) {
+        job.reject(new SteamRateLimitError(job.kind, blockedUntil[job.kind]));
+        continue;
+      }
+      const gap = job.priority === 'low' && job.kind !== 'browse' ? Math.max(communityLimits.backgroundGapMs, communityLimits.gapMs[job.kind]) : communityLimits.gapMs[job.kind];
+      const wait = lastAt[job.kind] + gap - Date.now();
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      lastAt[job.kind] = Date.now();
+      try {
+        const text = await http.fetchText(job.url);
+        strikes[job.kind] = 0;
+        job.resolve(text);
+      } catch (e) {
+        if (e instanceof SteamHttpError && (e.status === 403 || e.status === 429)) {
+          strikes[job.kind]++;
+          blockedUntil[job.kind] = Date.now() + Math.min(communityLimits.maxCooldownMs, communityLimits.cooldownMs * 2 ** (strikes[job.kind] - 1));
+          job.reject(new SteamRateLimitError(job.kind, blockedUntil[job.kind]));
+        } else job.reject(e);
+      }
+    }
+  } finally {
+    pumping = false;
+  }
+}
+
+/** Fetch a steamcommunity.com page through the shared, rate-limited queue. */
+export function communityFetch(url: string, priority: Priority = 'high'): Promise<string> {
+  return new Promise((resolve, reject) => {
+    queue.push({ url, kind: kindOf(url), priority, resolve, reject });
+    void pump();
+  });
+}
 
 async function mapLimit<T, R>(items: T[], limit: number, fn: (x: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);
@@ -313,7 +427,7 @@ function metaTitles(ids: string[]): Map<string, string> {
 
 const PERSONA_TTL_MS = 30 * 86400_000;
 
-export async function resolvePersonas(steamids: string[]): Promise<Record<string, string>> {
+export async function resolvePersonas(steamids: string[], priority: Priority = 'low'): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
   const todo: string[] = [];
   const get = db.prepare('SELECT name, fetched_at FROM steam_personas WHERE steamid = ?');
@@ -325,7 +439,7 @@ export async function resolvePersonas(steamids: string[]): Promise<Record<string
   const fetched: Record<string, string> = {};
   await mapLimit(todo, 4, async (id) => {
     try {
-      const xml = await http.fetchText(`https://steamcommunity.com/profiles/${encodeURIComponent(id)}/?xml=1`);
+      const xml = await communityFetch(`https://steamcommunity.com/profiles/${encodeURIComponent(id)}/?xml=1`, priority);
       const m = /<steamID><!\[CDATA\[([\s\S]*?)\]\]><\/steamID>/.exec(xml) ?? /<steamID>([^<]+)<\/steamID>/.exec(xml);
       const name = m?.[1].trim();
       if (name) fetched[id] = decodeEntities(name);
@@ -436,7 +550,7 @@ async function browseViaWeb(q: WorkshopBrowseQuery): Promise<WorkshopBrowseResul
   const url = buildBrowseUrl(q);
   const hit = browseCache.get(url);
   if (hit && Date.now() - hit.at < BROWSE_TTL_MS) return hit.result;
-  const { result, personas } = parseBrowsePage(await http.fetchText(url));
+  const { result, personas } = parseBrowsePage(await communityFetch(url));
   storePersonas(personas);
   if (result.availableTags.length) kvSet('workshop_tags', result.availableTags);
   else result.availableTags = kvGet<string[]>('workshop_tags', FALLBACK_TAGS);
@@ -517,10 +631,12 @@ export async function getItemDetails(id: string): Promise<WorkshopItemDetails> {
   const raw = (await http.publishedDetails([id])).find((d) => d.publishedfileid === id);
   if (!raw || raw.result !== 1) throw new Error(`Workshop item ${id} was not found (it may be private or removed)`);
   let page: ParsedItemPage | undefined;
+  let pageError: string | undefined;
   try {
-    page = parseItemPage(await http.fetchText(itemUrl(id)));
-  } catch {
-    /* the keyless API data is still useful */
+    page = parseItemPage(await communityFetch(itemUrl(id)));
+  } catch (e) {
+    // The keyless API data is still useful.
+    pageError = (e as Error).message;
   }
   let children: string[] = [];
   if (!page || page.isCollection) {
@@ -534,7 +650,7 @@ export async function getItemDetails(id: string): Promise<WorkshopItemDetails> {
   const creatorId = raw.creator ?? page?.creators[0]?.steamid ?? '';
   let name = page?.creators.find((c) => c.steamid === creatorId)?.name ?? (page?.creators.length === 1 ? page.creators[0].name : undefined);
   if (name && creatorId) storePersonas({ [creatorId]: name });
-  else if (creatorId) name = (await resolvePersonas([creatorId]))[creatorId];
+  else if (creatorId) name = (await resolvePersonas([creatorId], 'high'))[creatorId];
   const author: WorkshopAuthor = { steamid: creatorId, name };
   const requiredItems = isCollection ? [] : page?.requiredItems ?? [];
   const desc = raw.description ?? '';
@@ -556,6 +672,7 @@ export async function getItemDetails(id: string): Promise<WorkshopItemDetails> {
     description: desc || undefined,
     requiredItems,
     collectionItems: isCollection ? children : undefined,
+    requiredItemsUnknown: page ? undefined : pageError ?? 'The Workshop page could not be read',
   };
   try {
     upsertMeta([metaFromRaw(raw)]);
@@ -563,22 +680,30 @@ export async function getItemDetails(id: string): Promise<WorkshopItemDetails> {
   } catch {
     /* cache only */
   }
-  detailsCache.set(id, { at: Date.now(), value });
+  if (page) detailsCache.set(id, { at: Date.now(), value });
   return value;
 }
 
 // ---------------------------------------------------------------- dependencies
 
-export async function getRequiredItems(ids: string[], opts: { maxAgeMs?: number } = {}): Promise<Record<string, string[]>> {
+export interface RequiredItemsResult {
+  deps: Record<string, string[]>;
+  /** Ids whose item page could not be read (requirements unknown). */
+  failed: string[];
+  /** Why, when something failed (e.g. a rate limit). */
+  error?: string;
+}
+
+export async function getRequiredItemsDetailed(ids: string[], opts: { maxAgeMs?: number; priority?: Priority } = {}): Promise<RequiredItemsResult> {
   const maxAge = opts.maxAgeMs ?? 86400_000;
-  const out: Record<string, string[]> = {};
+  const deps: Record<string, string[]> = {};
   const get = db.prepare('SELECT deps, deps_fetched_at FROM workshop_meta WHERE workshop_id = ?');
   const todo: string[] = [];
   for (const id of [...new Set(ids)]) {
     const r = get.get(id) as { deps: string | null; deps_fetched_at: number | null } | undefined;
     if (r?.deps && r.deps_fetched_at && Date.now() - r.deps_fetched_at < maxAge) {
       try {
-        out[id] = JSON.parse(r.deps) as string[];
+        deps[id] = JSON.parse(r.deps) as string[];
         continue;
       } catch {
         /* refetch */
@@ -586,16 +711,29 @@ export async function getRequiredItems(ids: string[], opts: { maxAgeMs?: number 
     }
     todo.push(id);
   }
-  await mapLimit(todo, 4, async (id) => {
+  const failed: string[] = [];
+  let error: string | undefined;
+  // Sequential: the queue spaces requests out anyway, and a rate limit stops the rest quickly.
+  for (const id of todo) {
     try {
-      const deps = parseItemPage(await http.fetchText(itemUrl(id))).requiredItems.map((r) => r.workshopId);
-      out[id] = deps;
-      storeDeps(id, deps);
-    } catch {
-      out[id] = [];
+      const page = parseItemPage(await communityFetch(itemUrl(id), opts.priority ?? 'high'));
+      deps[id] = page.requiredItems.map((r) => r.workshopId);
+      storeDeps(id, deps[id]);
+      // The item page names its creator, which saves a profile request per author.
+      storePersonas(Object.fromEntries(page.creators.filter((c) => c.steamid && c.name).map((c) => [c.steamid!, c.name])));
+    } catch (e) {
+      failed.push(id);
+      error ??= (e as Error).message;
     }
-  });
-  return out;
+  }
+  return { deps, failed, error };
+}
+
+/** Required items per id ([] when unknown). */
+export async function getRequiredItems(ids: string[], opts: { maxAgeMs?: number; priority?: Priority } = {}): Promise<Record<string, string[]>> {
+  const r = await getRequiredItemsDetailed(ids, opts);
+  for (const id of r.failed) r.deps[id] = [];
+  return r.deps;
 }
 
 // ---------------------------------------------------------------- install plan
@@ -604,6 +742,8 @@ export async function resolveInstallPlan(ids: string[], known: { inServer: Set<s
   const seen = new Set<string>();
   const items: WorkshopInstallPlanItem[] = [];
   const unavailable: string[] = [];
+  const unchecked: string[] = [];
+  let reqError: string | undefined;
   let level: { id: string; reason: WorkshopInstallPlanItem['reason']; via?: string }[] = [...new Set(ids)].map((id) => ({ id, reason: 'requested' }));
   let first = true;
   while (level.length) {
@@ -659,11 +799,15 @@ export async function resolveInstallPlan(ids: string[], known: { inServer: Set<s
       expandable.push({ id: e.id });
     }
     first = false;
-    const deps = await getRequiredItems(expandable.map((x) => x.id));
+    const req = await getRequiredItemsDetailed(expandable.map((x) => x.id));
+    unchecked.push(...req.failed);
+    reqError ??= req.error;
+    const deps = req.deps;
     for (const { id } of expandable) {
       for (const dep of deps[id] ?? []) if (!seen.has(dep)) next.push({ id: dep, reason: 'dependency', via: id });
     }
     level = next;
   }
-  return { items, unavailable };
+  const warnings = unchecked.length ? [`Required items could not be checked for ${unchecked.length} item(s)${reqError ? `: ${reqError}` : ''}`] : undefined;
+  return { items, unavailable, unchecked: unchecked.length ? unchecked : undefined, warnings };
 }

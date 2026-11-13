@@ -105,6 +105,7 @@ export function WorkshopDetailModal({
           </div>
           <div className="min-w-0 space-y-4">
             {d.tags.includes('Build 41') && !d.tags.includes('Build 42') && <Notice>This item is tagged for Build 41 only. It will probably not load on a Build 42 server.</Notice>}
+            {d.requiredItemsUnknown && <Notice>Required items could not be checked: {d.requiredItemsUnknown}</Notice>}
             {d.requiredItems.length > 0 && (
               <section>
                 <h4 className="label mb-1.5">Required items</h4>

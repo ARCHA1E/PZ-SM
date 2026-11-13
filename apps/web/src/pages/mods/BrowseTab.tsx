@@ -119,7 +119,14 @@ export function BrowseTab({ onOpen, onInstall }: { onOpen: (id: string) => void;
         </div>
       </div>
 
-      {r.error && <ErrorBox error={r.error} />}
+      {r.error && (
+        <div className="space-y-2">
+          <ErrorBox error={r.error} />
+          <Button onClick={() => void r.refetch()} busy={r.isFetching}>
+            Try again
+          </Button>
+        </div>
+      )}
       {r.isLoading && (
         <div className="flex items-center gap-2 p-4 text-muted">
           <Spinner /> Searching the Workshop…

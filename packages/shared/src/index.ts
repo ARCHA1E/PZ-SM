@@ -202,6 +202,8 @@ export interface WorkshopItemDetails extends WorkshopBrowseItem {
   requiredItems: { workshopId: string; title?: string }[];
   /** For collections: child item ids. */
   collectionItems?: string[];
+  /** Set when the item page could not be read, so requiredItems may be incomplete. */
+  requiredItemsUnknown?: string;
 }
 
 export interface WorkshopInstallPlanItem {
@@ -218,6 +220,9 @@ export interface WorkshopInstallPlan {
   items: WorkshopInstallPlanItem[];
   /** Ids Steam reported as missing, private or removed. */
   unavailable: string[];
+  /** Ids whose "Required items" could not be read (e.g. rate limit). */
+  unchecked?: string[];
+  warnings?: string[];
 }
 
 export interface ModWipeOptions {
