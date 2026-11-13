@@ -144,6 +144,31 @@ export function setSandboxValues(text: string, changes: Record<string, SandboxCh
   return applyEdits(text, mergeSamePosition(edits));
 }
 
+/**
+ * Remove whole sub-tables (mod namespaces) from SandboxVars text, including the comment
+ * lines above each one. Everything else is left byte-for-byte unchanged.
+ */
+export function removeSandboxNamespaces(text: string, namespaces: Iterable<string>): string {
+  const doc = parseSandboxVars(text);
+  const drop = new Set(namespaces);
+  const fields = doc.root.fields;
+  const edits: TextEdit[] = [];
+  for (let i = 0; i < fields.length; i++) {
+    const f = fields[i];
+    if (!isTable(f.value) || !drop.has(String(f.key))) continue;
+    // From the line after the previous field (or the opening brace) ...
+    const prevEnd = i > 0 ? fields[i - 1].fieldSpan.end : doc.root.openSpan.end;
+    const nl = text.indexOf('\n', prevEnd);
+    const start = nl >= 0 && nl < f.fieldSpan.start ? nl + 1 : f.fieldSpan.start;
+    // ... through the separator and the end of the field's last line.
+    let end = f.fieldSpan.end;
+    const m = /^[ \t]*[,;]?[ \t]*(--[^\n]*)?\r?\n?/.exec(text.slice(end));
+    if (m) end += m[0].length;
+    edits.push({ start, end, text: '' });
+  }
+  return edits.length ? applyEdits(text, edits) : text;
+}
+
 /** Ensure the table's last field ends with a separator before we append after it. */
 function addMissingSeparator(text: string, table: LuaTable, edits: TextEdit[]): void {
   const last = table.fields[table.fields.length - 1];

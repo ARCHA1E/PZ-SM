@@ -25,8 +25,8 @@ export function TaskBar() {
   }, [lines, open]);
   if (!task && !lastDone) return null;
   return (
-    <div className="border-b border-line bg-panel2">
-      <div className="flex items-center gap-3 px-4 py-2 text-sm">
+    <div className="border-t border-line/80 bg-panel2/80">
+      <div className="mx-auto flex max-w-[1500px] items-center gap-3 px-4 py-2 text-sm">
         {task ? <Spinner /> : null}
         <span className="font-medium">{task ? task.label : lastDone}</span>
         {task?.progress !== undefined && (

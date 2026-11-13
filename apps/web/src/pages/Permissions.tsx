@@ -4,7 +4,7 @@ import clsx from 'clsx';
 import { Lock, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { del, get, post, put, toast, toastError, useLive } from '../api';
-import { ActionButton, Badge, Button, Card, Empty, Field, Loading, Modal, Notice, PageHeader, Tabs } from '../components/ui';
+import { ActionButton, Badge, Button, Card, Empty, Field, InfoTip, Loading, Modal, Notice, PageHeader, Tabs, Tooltip } from '../components/ui';
 
 const GROUPS: [string, RegExp][] = [
   ['Login & accounts', /Login|Kick|Ban|User|Whitelist|AccessLevel|Password|Network|Role|Ticket/],
@@ -37,7 +37,7 @@ export default function Permissions() {
       {!v.available && <Notice>{v.reason}</Notice>}
       {running && <Notice tone="accent">The server is running: role/capability edits are queued and applied automatically before the next start. User role changes, kicks and bans apply immediately.</Notice>}
       {v.pending.length > 0 && (
-        <Card title={`Queued changes (${v.pending.length})`} actions={<ActionButton onAction={() => del('/api/permissions/pending').then(refresh)}>Discard all</ActionButton>}>
+        <Card title={`Queued changes (${v.pending.length})`} actions={<ActionButton title="Drop all queued role/capability edits without applying them" onAction={() => del('/api/permissions/pending').then(refresh)}>Discard all</ActionButton>}>
           <ul className="space-y-1 text-sm">
             {v.pending.map((p) => (
               <li key={p.id} className="flex items-center gap-2">
@@ -96,7 +96,7 @@ function Roles({ v, refresh }: { v: PermissionsView; refresh: () => void }) {
 
   return (
     <div className="grid gap-4 lg:grid-cols-[260px_1fr]">
-      <Card title="Roles" actions={<Button onClick={() => setSelId('new')}><Plus className="h-4 w-4" /> New</Button>} bodyClass="p-1">
+      <Card title="Roles" actions={<Button title="Create a custom role with its own capability set" onClick={() => setSelId('new')}><Plus className="h-4 w-4" /> New</Button>} bodyClass="p-1">
         {v.roles.map((r) => (
           <button key={r.id} onClick={() => setSelId(r.id)} className={clsx('flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm', selId === r.id ? 'bg-accent/15' : 'hover:bg-panel2')}>
             <span className="h-3 w-3 rounded-full border border-line" style={{ background: hex(r.color) }} />
@@ -106,7 +106,9 @@ function Roles({ v, refresh }: { v: PermissionsView; refresh: () => void }) {
           </button>
         ))}
         <div className="mt-2 border-t border-line p-2">
-          <div className="label mb-1">Default roles</div>
+          <div className="label mb-1 flex items-center gap-1">
+            Default roles <InfoTip content="Role the server assigns by default (e.g. defaultForUser for new accounts). Edits are queued while the server is running." />
+          </div>
           {Object.entries(v.defaultRoles).map(([k, id]) => (
             <label key={k} className="mb-1 flex items-center justify-between gap-2 text-xs">
               <span className="text-muted">{k.replace(/^defaultFor/, '')}</span>
@@ -145,24 +147,26 @@ function Roles({ v, refresh }: { v: PermissionsView; refresh: () => void }) {
       >
         {role?.readonly && <p className="mb-3 text-xs text-muted">Built-in role: name and colour are fixed, capabilities can be changed.</p>}
         <div className="mb-4 grid gap-3 md:grid-cols-[1fr_2fr_auto]">
-          <Field label="Name">
+          <Field label="Name" tip="Role name shown in the game and in the panel. Built-in roles cannot be renamed.">
             <input className="input" disabled={role?.readonly} value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
           </Field>
-          <Field label="Description">
+          <Field label="Description" tip="Free-text note about what this role is for.">
             <input className="input" disabled={role?.readonly} value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} />
           </Field>
-          <Field label="Colour">
+          <Field label="Colour" tip="Colour the game associates with this role in its admin and player lists.">
             <input type="color" className="h-[34px] w-14 rounded border border-line bg-panel2" disabled={role?.readonly} value={hex(draft.color)} onChange={(e) => setDraft({ ...draft, color: fromHex(e.target.value) })} />
           </Field>
         </div>
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          <input className="input w-60" placeholder="Filter capabilities" value={filter} onChange={(e) => setFilter(e.target.value)} />
-          <Button onClick={() => setDraft({ ...draft, capabilities: [...v.capabilities] })}>All</Button>
-          <Button onClick={() => setDraft({ ...draft, capabilities: [] })}>None</Button>
+          <Tooltip content="Capabilities are the individual permissions a role grants (e.g. KickUser, BanUnbanUser). Filter by part of the name.">
+            <input className="input w-60" placeholder="Filter capabilities" value={filter} onChange={(e) => setFilter(e.target.value)} />
+          </Tooltip>
+          <Button title="Select every capability (full admin)" onClick={() => setDraft({ ...draft, capabilities: [...v.capabilities] })}>All</Button>
+          <Button title="Clear all capabilities" onClick={() => setDraft({ ...draft, capabilities: [] })}>None</Button>
           <span className="text-xs text-muted">
             {draft.capabilities.length} / {v.capabilities.length} selected
           </span>
-          <select className="input w-auto" value="" onChange={(e) => {
+          <select title="Replace the selected capabilities with a copy of another role's. Nothing is saved until you click Save role." className="input w-auto" value="" onChange={(e) => {
             const src = v.roles.find((r) => r.id === Number(e.target.value));
             if (src) setDraft({ ...draft, capabilities: [...src.capabilities] });
           }}>
@@ -179,7 +183,7 @@ function Roles({ v, refresh }: { v: PermissionsView; refresh: () => void }) {
             <div key={g}>
               <div className="label mb-1 flex items-center justify-between">
                 {g}
-                <button className="text-[10px] normal-case text-accent" onClick={() => {
+                <button title="Select or clear every capability in this group" className="text-[10px] normal-case text-accent" onClick={() => {
                   const all = caps.every((c) => has.has(c));
                   setDraft({ ...draft, capabilities: all ? draft.capabilities.filter((c) => !caps.includes(c)) : [...new Set([...draft.capabilities, ...caps])] });
                 }}>
@@ -208,8 +212,8 @@ function Users({ v, refresh, running }: { v: PermissionsView; refresh: () => voi
   const list = v.users.filter((x) => !f || x.username.toLowerCase().includes(f.toLowerCase()));
   return (
     <Card
-      title={<input className="input w-60" placeholder="Filter accounts" value={f} onChange={(e) => setF(e.target.value)} />}
-      actions={<Button onClick={() => setAdd(true)} disabled={!running} title={running ? '' : 'Server must be running'}><Plus className="h-4 w-4" /> Add account</Button>}
+      title={<input className="input w-60" title="Show only accounts whose username contains this text" placeholder="Filter accounts" value={f} onChange={(e) => setF(e.target.value)} />}
+      actions={<Button onClick={() => setAdd(true)} disabled={!running} title={running ? 'Add a whitelist account with a password (applied through the running server)' : 'Server must be running'}><Plus className="h-4 w-4" /> Add account</Button>}
       bodyClass="p-0"
     >
       {list.length === 0 ? (
@@ -235,7 +239,7 @@ function Users({ v, refresh, running }: { v: PermissionsView; refresh: () => voi
                   {x.displayName && x.displayName !== x.username && <div className="text-xs text-muted">{x.displayName}</div>}
                 </td>
                 <td>
-                  <select className="input w-36 py-1" value={x.role} onChange={(e) => put<{ output: string }>(`/api/users/${encodeURIComponent(x.username)}/role`, { role: Number(e.target.value) }).then((r) => (toast(r.output === 'queued' ? 'Queued' : 'Role updated'), refresh()), toastError)}>
+                  <select title="Role for this account. Applies immediately while the server is running, otherwise queued." className="input w-36 py-1" value={x.role} onChange={(e) => put<{ output: string }>(`/api/users/${encodeURIComponent(x.username)}/role`, { role: Number(e.target.value) }).then((r) => (toast(r.output === 'queued' ? 'Queued' : 'Role updated'), refresh()), toastError)}>
                     {v.roles.map((r) => (
                       <option key={r.id} value={r.id}>
                         {r.name}
@@ -249,10 +253,10 @@ function Users({ v, refresh, running }: { v: PermissionsView; refresh: () => voi
                   <ActionButton variant="ghost" onAction={async () => {
                     const pw = window.prompt(`New password for ${x.username}`);
                     if (pw) await put(`/api/users/${encodeURIComponent(x.username)}/password`, { password: pw }).then(() => toast('Password changed'));
-                  }} disabled={!running}>
+                  }} disabled={!running} title="Set a new password for this account (server must be running)">
                     Password
                   </ActionButton>
-                  <ActionButton variant="ghost" onAction={() => del(`/api/users/${encodeURIComponent(x.username)}`).then(() => (toast('Removed'), refresh()))} confirm={`Remove ${x.username} from the whitelist?`}>
+                  <ActionButton variant="ghost" onAction={() => del(`/api/users/${encodeURIComponent(x.username)}`).then(() => (toast('Removed'), refresh()))} confirm={`Remove ${x.username} from the whitelist?`} title="Remove this account from the whitelist">
                     <Trash2 className="h-4 w-4" />
                   </ActionButton>
                 </td>
@@ -263,10 +267,10 @@ function Users({ v, refresh, running }: { v: PermissionsView; refresh: () => voi
       )}
       <Modal open={add} onClose={() => setAdd(false)} title="Add whitelist account">
         <div className="space-y-3">
-          <Field label="Username">
+          <Field label="Username" tip="Login name the player types in the game. Accounts must exist here when the server uses a whitelist (Open=false).">
             <input className="input" value={u} onChange={(e) => setU(e.target.value)} />
           </Field>
-          <Field label="Password">
+          <Field label="Password" tip="Password the player will use to log in. They cannot see it, so tell them yourself.">
             <input className="input" type="password" value={p} onChange={(e) => setP(e.target.value)} />
           </Field>
           <div className="flex justify-end">
@@ -313,7 +317,7 @@ function Bans({ v, refresh }: { v: PermissionsView; refresh: () => void }) {
                   </td>
                   <td className="text-xs">{b.reason || '—'}</td>
                   <td className="text-right">
-                    <ActionButton variant="ghost" onAction={() => post('/api/bans/remove', b.kind === 'ip' ? { ip: b.value } : { steamid: b.value }).then(() => (toast('Unbanned'), refresh()))}>
+                    <ActionButton variant="ghost" title="Lift this ban" onAction={() => post('/api/bans/remove', b.kind === 'ip' ? { ip: b.value } : { steamid: b.value }).then(() => (toast('Unbanned'), refresh()))}>
                       Unban
                     </ActionButton>
                   </td>
@@ -325,13 +329,13 @@ function Bans({ v, refresh }: { v: PermissionsView; refresh: () => void }) {
       </Card>
       <Card title="Add ban">
         <div className="space-y-3">
-          <select className="input" value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
+          <select title="What to ban. Steam ID and IP bans block the person even under a new username; username bans need the server running." className="input" value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
             <option value="steamid">Steam ID</option>
             <option value="ip">IP address</option>
             <option value="username">Username (server running)</option>
           </select>
-          <input className="input font-mono" placeholder={kind === 'steamid' ? '7656119…' : kind === 'ip' ? '1.2.3.4' : 'username'} value={val} onChange={(e) => setVal(e.target.value)} />
-          <input className="input" placeholder="Reason (optional)" value={reason} onChange={(e) => setReason(e.target.value)} />
+          <input title="64-bit Steam ID (starts with 7656119), an IPv4 address, or an exact username depending on the type chosen" className="input font-mono" placeholder={kind === 'steamid' ? '7656119…' : kind === 'ip' ? '1.2.3.4' : 'username'} value={val} onChange={(e) => setVal(e.target.value)} />
+          <input title="Optional note stored with the ban" className="input" placeholder="Reason (optional)" value={reason} onChange={(e) => setReason(e.target.value)} />
           <ActionButton variant="danger" disabled={!val} onAction={() => post('/api/bans', { [kind]: val, reason }).then(() => (toast('Banned'), setVal(''), refresh()))}>
             Ban
           </ActionButton>

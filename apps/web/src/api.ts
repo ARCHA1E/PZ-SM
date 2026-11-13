@@ -191,3 +191,10 @@ export function fmtDate(s?: string | number): string {
   const d = new Date(typeof s === 'number' && s < 1e12 ? s * 1000 : s);
   return d.toLocaleString();
 }
+
+/** Date only (Workshop timestamps are in seconds). */
+export function fmtDay(s?: string | number): string {
+  if (!s) return '—';
+  const d = new Date(typeof s === 'number' && s < 1e12 ? s * 1000 : s);
+  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}

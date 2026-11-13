@@ -2,10 +2,11 @@
 import { audit, getSettings, kvGet, kvSet } from '../db.js';
 import { createBackup } from './backups.js';
 import { analyzeBuild, getManifest, summarize } from './buildAnalyzer.js';
-import { invalidateModScan, getModState } from './mods.js';
+import { invalidateModScan, getModState, scanMods, setActiveMods, setWorkshopItems } from './mods.js';
 import { addMissingSandboxDefaults } from './settingsRegistry.js';
 import { fetchLatestBuildId, getPublishedFileDetails, installOrUpdateServer, readInstalledBuild, readWorkshopAcf } from './steam.js';
 import { downloadWorkshopItems, workshopJobStatus } from './workshopDownloader.js';
+import { getRequiredItems, resolvePersonas } from './workshopBrowse.js';
 import { supervisor } from './supervisor.js';
 import { runTask } from './tasks.js';
 
@@ -63,9 +64,20 @@ export async function checkGameUpdate(): Promise<{ installed?: string; latest?: 
 export async function downloadWorkshop(ids: string[], opts: { validate?: boolean; force?: boolean } = {}): Promise<{ ok: string[]; failed: string[] }> {
   const r = await runTask('workshop', `Download ${ids.length} Workshop item(s)`, (ctx) => downloadWorkshopItems(ids, ctx, opts));
   invalidateModScan();
-  await getPublishedFileDetails(r.ok).catch(() => []);
+  await refreshWorkshopMeta(r.ok).catch(() => undefined);
   audit('workshop.download', `${r.ok.length} ok${r.failed.length ? `, failed: ${r.failed.join(',')}` : ''}`);
   return r;
+}
+
+/** Titles, previews, tags, authors and "Required items" for Workshop items, from Steam. */
+export async function refreshWorkshopMeta(ids: string[]): Promise<void> {
+  if (!ids.length) return;
+  const details = await getPublishedFileDetails(ids);
+  await Promise.all([
+    getRequiredItems(ids).catch(() => ({})),
+    resolvePersonas([...new Set(details.map((d) => d.creator).filter((c): c is string => !!c))]).catch(() => ({})),
+  ]);
+  kvSet('workshop_meta_refreshed', Date.now());
 }
 
 /** Continue an interrupted Workshop download from where it stopped. */
@@ -110,6 +122,36 @@ export async function modUpdateJob(actionOverride?: 'notify' | 'restart'): Promi
 }
 
 /** After mods change: rescan and seed default values for newly available sandbox options. */
+/**
+ * Add Workshop items (already expanded with their dependencies / collection children) to the
+ * server, download them, then enable mods. With enable='auto', items providing exactly one
+ * mod are enabled (plus anything those mods require); items with several mods are left for
+ * the admin to choose, since they are often variants of each other.
+ */
+export async function installWorkshopItems(ids: string[], opts: { enable?: 'auto' | 'none' } = {}): Promise<{ enabled: string[]; needsChoice: string[]; failed: string[] }> {
+  const st = await getModState();
+  await setWorkshopItems([...st.workshopItems, ...ids]);
+  audit('workshop.install', ids.join(','));
+  const r = await downloadWorkshop(ids);
+  await afterModsChanged();
+  if (opts.enable === 'none') return { enabled: [], needsChoice: [], failed: r.failed };
+  const mods = await scanMods();
+  const enable: string[] = [];
+  const needsChoice: string[] = [];
+  for (const wid of ids) {
+    const its = mods.filter((m) => m.workshopId === wid);
+    if (its.length === 1) enable.push(its[0].id);
+    else if (its.length > 1) needsChoice.push(wid);
+  }
+  if (enable.length) {
+    const now = await getModState();
+    await setActiveMods([...now.active, ...enable.filter((id) => !now.active.includes(id))], { withDependencies: true });
+    await afterModsChanged();
+    if (supervisor.running) supervisor.pendingRestart = true;
+  }
+  return { enabled: enable, needsChoice, failed: r.failed };
+}
+
 export async function afterModsChanged(): Promise<string[]> {
   invalidateModScan();
   return addMissingSandboxDefaults().catch(() => []);

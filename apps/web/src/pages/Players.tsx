@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { PermissionsView } from '@pzsm/shared';
 import { useState } from 'react';
 import { fmtDate, get, post, put, toast, toastError, useLive } from '../api';
-import { ActionButton, Badge, Button, Card, Empty, Field, Loading, Modal, PageHeader, Toggle } from '../components/ui';
+import { ActionButton, Badge, Button, Card, Empty, Field, Loading, Modal, PageHeader, ToggleRow, Tooltip } from '../components/ui';
 
 interface PlayerRow {
   username: string;
@@ -29,7 +29,11 @@ export default function Players() {
       <PageHeader
         title="Players"
         subtitle={`${list.filter((p) => p.online).length} online · ${list.length} known`}
-        actions={<input className="input w-60" placeholder="Filter by name or Steam ID" value={filter} onChange={(e) => setFilter(e.target.value)} />}
+        actions={
+          <Tooltip content="Show only players whose username or Steam ID contains this text.">
+            <input className="input w-60" placeholder="Filter by name or Steam ID" value={filter} onChange={(e) => setFilter(e.target.value)} />
+          </Tooltip>
+        }
       />
       <Card bodyClass="p-0">
         {list.length === 0 ? (
@@ -76,7 +80,7 @@ export default function Players() {
                   </td>
                   <td className="hidden text-xs text-muted lg:table-cell">{p.lastConnection ? fmtDate(p.lastConnection) : '—'}</td>
                   <td className="text-right">
-                    <Button onClick={() => setSel(p)}>Manage</Button>
+                    <Button title="Change role, kick/ban, give items or XP, spawn a vehicle or teleport" onClick={() => setSel(p)}>Manage</Button>
                   </td>
                 </tr>
               ))}
@@ -106,7 +110,7 @@ function PlayerModal({ player, onClose, running, roles, onChanged }: { player: P
     <Modal open onClose={onClose} title={`Manage ${player.username}`} wide>
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-3">
-          <Field label="Role">
+          <Field label="Role" tip="The player's role decides which admin capabilities they have (see Roles & Access). Changes apply immediately while the server is running; otherwise they are queued until the next start.">
             <select
               className="input"
               value={roles.find((r) => r.name === player.role)?.id ?? ''}
@@ -130,31 +134,27 @@ function PlayerModal({ player, onClose, running, roles, onChanged }: { player: P
               ))}
             </select>
           </Field>
-          <Field label="Reason (kick/ban)">
+          <Field label="Reason (kick/ban)" tip="Optional message recorded with a kick or ban and shown to the player.">
             <input className="input" value={reason} onChange={(e) => setReason(e.target.value)} />
           </Field>
           <div className="flex flex-wrap gap-2">
-            <ActionButton disabled={!running || !player.online} onAction={() => act({ action: 'kick', reason })}>
+            <ActionButton disabled={!running || !player.online} title="Disconnect the player now. They can rejoin immediately." onAction={() => act({ action: 'kick', reason })}>
               Kick
             </ActionButton>
-            <ActionButton variant="danger" onAction={() => post('/api/bans', { username: player.username, steamid: running ? undefined : player.steamid, reason }).then(() => (toast('Banned'), onChanged()))} confirm={`Ban ${player.username}?`}>
+            <ActionButton variant="danger" title="Ban the account (by username, and Steam ID when the server is stopped). Remove it later under Roles & Access > Bans." onAction={() => post('/api/bans', { username: player.username, steamid: running ? undefined : player.steamid, reason }).then(() => (toast('Banned'), onChanged()))} confirm={`Ban ${player.username}?`}>
               Ban
             </ActionButton>
-            <ActionButton variant="danger" disabled={!running} onAction={() => post('/api/bans', { username: player.username, reason, banIp: true }).then(() => toast('Banned (+IP)'))} confirm={`Ban ${player.username} and their IP?`}>
+            <ActionButton variant="danger" disabled={!running} title="Ban the account and also their current IP address. Needs the server running; may affect others on the same network." onAction={() => post('/api/bans', { username: player.username, reason, banIp: true }).then(() => toast('Banned (+IP)'))} confirm={`Ban ${player.username} and their IP?`}>
               Ban + IP
             </ActionButton>
           </div>
           <div className="flex items-center gap-6 pt-2">
-            <label className="flex items-center gap-2 text-sm">
-              <Toggle checked={god} disabled={!running} onChange={async (v) => (await act({ action: 'godmode', enabled: v }).catch(toastError), setGod(v))} /> God mode
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <Toggle checked={invis} disabled={!running} onChange={async (v) => (await act({ action: 'invisible', enabled: v }).catch(toastError), setInvis(v))} /> Invisible
-            </label>
+            <ToggleRow checked={god} disabled={!running} onChange={async (v) => (await act({ action: 'godmode', enabled: v }).catch(toastError), setGod(v))} label="God mode" tip="Makes the player invulnerable (no damage or infection). Needs the server running; the switch only shows what you last set here." />
+            <ToggleRow checked={invis} disabled={!running} onChange={async (v) => (await act({ action: 'invisible', enabled: v }).catch(toastError), setInvis(v))} label="Invisible" tip="Hides the player from zombies and other players. Needs the server running; the switch only shows what you last set here." />
           </div>
         </div>
         <div className="space-y-3">
-          <Field label="Give item (full type, e.g. Base.Axe)">
+          <Field label="Give item (full type, e.g. Base.Axe)" tip="Full item type as Module.Item (Base.Axe, Base.Bandage). The count is how many are added to the player's inventory. Needs the server running and the player online.">
             <div className="flex gap-2">
               <input className="input font-mono" value={item} onChange={(e) => setItem(e.target.value)} />
               <input className="input w-20" type="number" min={1} value={count} onChange={(e) => setCount(Number(e.target.value))} />
@@ -163,7 +163,7 @@ function PlayerModal({ player, onClose, running, roles, onChanged }: { player: P
               </ActionButton>
             </div>
           </Field>
-          <Field label="Add XP (Perk=amount)">
+          <Field label="Add XP (Perk=amount)" tip="Perk name, equals sign, XP amount, e.g. Woodwork=100 or Cooking=250. This is XP points, not levels.">
             <div className="flex gap-2">
               <input className="input font-mono" value={xp} onChange={(e) => setXp(e.target.value)} />
               <ActionButton disabled={!running} onAction={() => act({ action: 'addxp', value: xp })}>
@@ -171,7 +171,7 @@ function PlayerModal({ player, onClose, running, roles, onChanged }: { player: P
               </ActionButton>
             </div>
           </Field>
-          <Field label="Spawn vehicle near player">
+          <Field label="Spawn vehicle near player" tip="Vehicle script id as Module.Name, e.g. Base.PickUpTruck. It appears next to the player.">
             <div className="flex gap-2">
               <input className="input font-mono" value={vehicle} onChange={(e) => setVehicle(e.target.value)} />
               <ActionButton disabled={!running} onAction={() => act({ action: 'addvehicle', value: vehicle })}>
@@ -179,7 +179,7 @@ function PlayerModal({ player, onClose, running, roles, onChanged }: { player: P
               </ActionButton>
             </div>
           </Field>
-          <Field label="Teleport to player">
+          <Field label="Teleport to player" tip="Moves this player next to the other player whose username you enter. Both must be online.">
             <div className="flex gap-2">
               <input className="input" placeholder="other username" value={target} onChange={(e) => setTarget(e.target.value)} />
               <ActionButton disabled={!running || !target} onAction={() => act({ action: 'teleport-to-player', value: target })}>

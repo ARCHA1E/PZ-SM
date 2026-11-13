@@ -176,6 +176,9 @@ export interface PublishedFileDetails {
   time_updated?: number;
   file_size?: number | string;
   consumer_app_id?: number;
+  creator?: string;
+  tags?: { tag: string }[];
+  subscriptions?: number;
 }
 
 const API = 'https://api.steampowered.com';
@@ -193,10 +196,11 @@ export async function getPublishedFileDetails(ids: string[]): Promise<PublishedF
     out.push(...(j.response?.publishedfiledetails ?? []));
   }
   const up = db.prepare(
-    'INSERT INTO workshop_meta (workshop_id, title, preview, time_updated, size, fetched_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(workshop_id) DO UPDATE SET title=excluded.title, preview=excluded.preview, time_updated=excluded.time_updated, size=excluded.size, fetched_at=excluded.fetched_at',
+    'INSERT INTO workshop_meta (workshop_id, title, preview, time_updated, size, fetched_at, tags, creator, subscriptions) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(workshop_id) DO UPDATE SET title=excluded.title, preview=excluded.preview, time_updated=excluded.time_updated, size=excluded.size, fetched_at=excluded.fetched_at, tags=excluded.tags, creator=excluded.creator, subscriptions=excluded.subscriptions',
   );
   for (const d of out) {
-    if (d.result === 1) up.run(d.publishedfileid, d.title ?? null, d.preview_url ?? null, d.time_updated ?? null, Number(d.file_size ?? 0), Date.now());
+    if (d.result === 1)
+      up.run(d.publishedfileid, d.title ?? null, d.preview_url ?? null, d.time_updated ?? null, Number(d.file_size ?? 0), Date.now(), d.tags ? JSON.stringify(d.tags.map((t) => t.tag)) : null, d.creator ?? null, d.subscriptions ?? null);
   }
   return out;
 }

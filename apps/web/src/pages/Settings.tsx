@@ -4,9 +4,9 @@ import clsx from 'clsx';
 import { Eye, EyeOff, FileCode, FileUp, RotateCcw, Search, Upload } from 'lucide-react';
 import { ImportConfigModal } from '../components/ImportConfigModal';
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { get, post, put, toast, toastError, useDebounced, useLive } from '../api';
-import { ActionButton, Badge, Button, Card, Empty, ErrorBox, Loading, Modal, Notice, PageHeader, Toggle } from '../components/ui';
+import { ActionButton, Badge, Button, Card, Empty, ErrorBox, Loading, Modal, Notice, PageHeader, Toggle, Tooltip } from '../components/ui';
 
 const MANAGED_LINKS: Record<string, { to: string; label: string }> = {
   Mods: { to: '/mods', label: 'Mods page' },
@@ -35,9 +35,21 @@ export default function Settings({ kind }: { kind: 'server' | 'sandbox' }) {
     setPage('');
   }, [kind]);
   const view = q.data;
+  const [params, setParams] = useSearchParams();
+  const wantMod = params.get('mod');
   useEffect(() => {
-    if (view && !page && view.pages[0]) setPage(view.pages[0].key);
-  }, [view, page]);
+    if (!view) return;
+    if (wantMod) {
+      const def = view.settings.find((d) => d.mods?.includes(wantMod)) ?? view.settings.find((d) => d.page === `mod:${wantMod}`);
+      if (def) {
+        setPage(def.page);
+        setSearch('');
+      } else toast(`Mod "${wantMod}" has no sandbox options on this server (is it enabled?)`, 'info');
+      setParams((p) => (p.delete('mod'), p), { replace: true });
+      return;
+    }
+    if (!page && view.pages[0]) setPage(view.pages[0].key);
+  }, [view, page, wantMod, setParams]);
 
   const filtered = useMemo(() => {
     if (!view) return [];
@@ -204,8 +216,8 @@ export default function Settings({ kind }: { kind: 'server' | 'sandbox' }) {
         </div>
       </div>
       {dirty > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-line bg-panel/95 backdrop-blur md:left-60">
-          <div className="flex items-center gap-3 px-6 py-3">
+        <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-line bg-panel/95 backdrop-blur">
+          <div className="mx-auto flex max-w-[1500px] items-center gap-3 px-6 py-3">
             <span className="text-sm">
               {dirty} unsaved change{dirty > 1 ? 's' : ''}: <span className="text-muted">{Object.keys(edits).slice(0, 6).join(', ')}{dirty > 6 ? '…' : ''}</span>
             </span>
@@ -269,7 +281,9 @@ function SettingRow({
     <div className={clsx('grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,1fr)_320px]', edited && 'bg-warn/5')}>
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="font-medium">{def.label}</span>
+          <Tooltip content={<SettingTip def={def} kind={kind} />}>
+            <span className="cursor-help font-medium decoration-muted/60 decoration-dotted underline-offset-4 hover:underline">{def.label}</span>
+          </Tooltip>
           <code className="text-[11px] text-muted">{def.key}</code>
           {modified && <Badge tone="warn">changed</Badge>}
           {fileValue === null && <Badge title="Not present in the file; the game uses the default">not in file</Badge>}
@@ -277,7 +291,7 @@ function SettingRow({
           {def.source === 'mod' && def.mods && <Badge tone="accent">{def.mods.join(', ')}</Badge>}
           {def.source === 'unknown' && <Badge tone="bad">unrecognized</Badge>}
         </div>
-        {def.description && <p className="mt-1 whitespace-pre-line text-xs text-muted">{def.description}</p>}
+        {def.description && <p className="mt-1 line-clamp-2 whitespace-pre-line text-xs text-muted">{def.description}</p>}
         <p className="mt-1 text-[11px] text-muted/80">
           {def.default !== undefined && !def.secret && (
             <>
@@ -309,6 +323,49 @@ function SettingRow({
             <RotateCcw className="h-3.5 w-3.5" />
           </button>
         )}
+      </div>
+    </div>
+  );
+}
+
+function SettingTip({ def, kind }: { def: SettingDef; kind: 'server' | 'sandbox' }) {
+  return (
+    <div className="space-y-1.5">
+      <div className="font-semibold">{def.label}</div>
+      {def.description ? <p className="whitespace-pre-line text-muted">{def.description}</p> : <p className="italic text-muted">No description provided by the game or mod.</p>}
+      <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 border-t border-line pt-1.5 text-[11px]">
+        <span className="text-muted">Key</span>
+        <code className="break-all">{def.key}</code>
+        <span className="text-muted">Type</span>
+        <span>{def.type}</span>
+        {def.default !== undefined && !def.secret && (
+          <>
+            <span className="text-muted">Default</span>
+            <code className="break-all">{fmtDefault(def)}</code>
+          </>
+        )}
+        {def.min !== undefined && def.max !== undefined && !def.choices && (
+          <>
+            <span className="text-muted">Range</span>
+            <span>
+              {def.min} – {def.max}
+            </span>
+          </>
+        )}
+        {def.choices && def.choices.length <= 12 && (
+          <>
+            <span className="text-muted">Choices</span>
+            <span>{def.choices.map((c) => (c.label === String(c.value) ? c.label : `${c.value} = ${c.label}`)).join(', ')}</span>
+          </>
+        )}
+        {def.mods?.length ? (
+          <>
+            <span className="text-muted">From mod</span>
+            <span>{def.mods.join(', ')}</span>
+          </>
+        ) : null}
+        <span className="text-muted">Applies</span>
+        <span>{def.managed ? 'Managed on its own page' : kind === 'sandbox' ? 'On the next restart' : def.live ? 'Immediately while running' : 'On the next restart'}</span>
       </div>
     </div>
   );

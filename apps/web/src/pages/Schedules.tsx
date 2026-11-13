@@ -3,7 +3,7 @@ import type { ScheduleEntry } from '@pzsm/shared';
 import { Play, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { del, fmtDate, get, post, put, toast, toastError } from '../api';
-import { ActionButton, Badge, Button, Card, Empty, Field, Loading, Modal, PageHeader, Toggle } from '../components/ui';
+import { ActionButton, Badge, Button, Card, Empty, Field, InfoTip, Loading, Modal, PageHeader, Toggle, ToggleRow, Tooltip } from '../components/ui';
 
 const KINDS: { key: ScheduleEntry['kind']; label: string; help: string }[] = [
   { key: 'restart', label: 'Restart', help: 'Restart with in-game countdown warnings.' },
@@ -51,7 +51,11 @@ export default function Schedules() {
               <tr>
                 <th>Enabled</th>
                 <th>Task</th>
-                <th>Cron</th>
+                <th>
+                  <span className="inline-flex items-center gap-1">
+                    Cron <InfoTip content="minute hour day-of-month month day-of-week, in the server's time zone." />
+                  </span>
+                </th>
                 <th className="hidden md:table-cell">Next run</th>
                 <th className="hidden md:table-cell">Last run</th>
                 <th />
@@ -61,7 +65,9 @@ export default function Schedules() {
               {list.map((s) => (
                 <tr key={s.id}>
                   <td>
-                    <Toggle checked={s.enabled} onChange={(v) => put('/api/schedules', { ...s, enabled: v }).then(refresh, toastError)} />
+                    <Tooltip content={s.enabled ? 'Enabled: runs at its next scheduled time. Turn off to pause it without deleting.' : 'Disabled: this schedule will not run.'}>
+                      <Toggle checked={s.enabled} onChange={(v) => put('/api/schedules', { ...s, enabled: v }).then(refresh, toastError)} />
+                    </Tooltip>
                   </td>
                   <td>
                     <button className="text-left font-medium hover:text-accent" onClick={() => setEdit(s)}>
@@ -75,7 +81,7 @@ export default function Schedules() {
                   <td className="hidden text-xs text-muted md:table-cell">{s.enabled ? fmtDate(s.nextRun) : '—'}</td>
                   <td className="hidden text-xs text-muted md:table-cell">{fmtDate(s.lastRun)}</td>
                   <td className="text-right">
-                    <ActionButton variant="ghost" onAction={() => post(`/api/schedules/${s.id}/run`).then(() => toast('Started'))} title="Run now" confirm="Run this task now?">
+                    <ActionButton variant="ghost" onAction={() => post(`/api/schedules/${s.id}/run`).then(() => toast('Started'))} title="Run now (does not change the schedule)" confirm="Run this task now?">
                       <Play className="h-4 w-4" />
                     </ActionButton>
                     <ActionButton variant="ghost" onAction={() => del(`/api/schedules/${s.id}`).then(refresh)} confirm="Delete this schedule?" title="Delete">
@@ -118,7 +124,20 @@ function EditModal({ value, onClose, onSaved }: { value: Partial<ScheduleEntry>;
   return (
     <Modal open onClose={onClose} title={s.id ? 'Edit schedule' : 'New schedule'}>
       <div className="space-y-3">
-        <Field label="Task" hint={KINDS.find((k) => k.key === s.kind)?.help}>
+        <Field
+          label="Task"
+          hint={KINDS.find((k) => k.key === s.kind)?.help}
+          tip={
+            <ul className="space-y-1">
+              <li><b>Restart</b>: restart with in-game countdown warnings.</li>
+              <li><b>Backup</b>: world, player save, config and database; old automatic backups are pruned by retention.</li>
+              <li><b>Mod update check</b>: compares Workshop items with Steam, then notifies or restarts.</li>
+              <li><b>Game update check</b>: checks SteamCMD for a new build, optionally updating.</li>
+              <li><b>Broadcast message</b>: sends a server message to everyone online.</li>
+              <li><b>Console command</b>: runs any server command over RCON.</li>
+            </ul>
+          }
+        >
           <select className="input" value={s.kind} onChange={(e) => setS({ ...s, kind: e.target.value as ScheduleEntry['kind'], payload: {} })}>
             {KINDS.map((k) => (
               <option key={k.key} value={k.key}>
@@ -127,7 +146,20 @@ function EditModal({ value, onClose, onSaved }: { value: Partial<ScheduleEntry>;
             ))}
           </select>
         </Field>
-        <Field label="When (cron)">
+        <Field
+          label="When (cron)"
+          tip={
+            <div className="space-y-1">
+              <div>Five fields: minute hour day-of-month month day-of-week (0-6, Sunday = 0), in the server's time zone.</div>
+              <div>
+                <code>*</code> any, <code>*/15</code> every 15, <code>6,18</code> list, <code>1-5</code> range.
+              </div>
+              <div>
+                Examples: <code>0 6 * * *</code> daily 06:00; <code>*/30 * * * *</code> every 30 min; <code>0 4 * * 1</code> Mondays 04:00; <code>0 */6 * * *</code> every 6 hours.
+              </div>
+            </div>
+          }
+        >
           <input className="input font-mono" value={s.cron} onChange={(e) => setS({ ...s, cron: e.target.value })} />
           <div className="mt-1 flex flex-wrap gap-1">
             {PRESETS.map(([l, c]) => (
@@ -139,16 +171,16 @@ function EditModal({ value, onClose, onSaved }: { value: Partial<ScheduleEntry>;
         </Field>
         {s.kind === 'restart' && (
           <>
-            <Field label="Reason (shown to players)">
+            <Field label="Reason (shown to players)" tip="Replaces {reason} in the countdown warning message sent to players.">
               <input className="input" value={String(p.reason ?? '')} onChange={(e) => setP('reason', e.target.value)} placeholder="Scheduled restart" />
             </Field>
-            <Field label="Warning minutes (comma separated)" hint="Leave empty to use the manager default">
+            <Field label="Warning minutes (comma separated)" hint="Leave empty to use the manager default" tip="Minutes before the restart at which warnings are broadcast, e.g. 10,5,1. The restart happens when the countdown ends. Empty uses the Manager page setting.">
               <input className="input" value={Array.isArray(p.warnings) ? (p.warnings as number[]).join(',') : ''} onChange={(e) => setP('warnings', e.target.value ? e.target.value.split(',').map((x) => Number(x.trim())).filter((x) => x > 0) : undefined)} />
             </Field>
           </>
         )}
         {s.kind === 'mod-update-check' && (
-          <Field label="When updates are found">
+          <Field label="When updates are found" tip="Notify only raises an alert. Restart runs the warning countdown and restarts so the server re-downloads the updated mods. 'Use manager default' follows the Manager page.">
             <select className="input" value={String(p.action ?? '')} onChange={(e) => setP('action', e.target.value || undefined)}>
               <option value="">Use manager default</option>
               <option value="notify">Notify only</option>
@@ -157,23 +189,19 @@ function EditModal({ value, onClose, onSaved }: { value: Partial<ScheduleEntry>;
           </Field>
         )}
         {s.kind === 'game-update-check' && (
-          <label className="flex items-center gap-2 text-sm">
-            <Toggle checked={!!p.autoUpdate} onChange={(v) => setP('autoUpdate', v)} /> Automatically update (restarts with warnings)
-          </label>
+          <ToggleRow checked={!!p.autoUpdate} onChange={(v) => setP('autoUpdate', v)} label="Automatically update (restarts with warnings)" tip="When a new build is found on the selected Steam branch, warn players, stop the server, update and start it again. Off only notifies." />
         )}
         {s.kind === 'message' && (
-          <Field label="Message">
+          <Field label="Message" tip="Text broadcast to all online players (like the servermsg command). Skipped if the server is not running.">
             <input className="input" value={String(p.text ?? '')} onChange={(e) => setP('text', e.target.value)} />
           </Field>
         )}
         {s.kind === 'command' && (
-          <Field label="Command">
+          <Field label="Command" tip="Any server console command without a leading slash, e.g. save, chopper, or servermsg &quot;Hello&quot;. Sent over RCON, so the server must be running.">
             <input className="input font-mono" value={String(p.command ?? '')} onChange={(e) => setP('command', e.target.value)} placeholder="save" />
           </Field>
         )}
-        <label className="flex items-center gap-2 text-sm">
-          <Toggle checked={!!s.enabled} onChange={(v) => setS({ ...s, enabled: v })} /> Enabled
-        </label>
+        <ToggleRow checked={!!s.enabled} onChange={(v) => setS({ ...s, enabled: v })} label="Enabled" tip="Disabled schedules are kept but never run." />
         <div className="flex justify-end gap-2">
           <Button onClick={onClose}>Cancel</Button>
           <ActionButton variant="primary" onAction={() => put('/api/schedules', s).then(() => (toast('Schedule saved'), onSaved()))}>

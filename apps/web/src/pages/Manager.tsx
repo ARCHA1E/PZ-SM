@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AuditEntry, BuildManifestSummary, ManagerSettings, SteamBranch } from '@pzsm/shared';
 import { useEffect, useState } from 'react';
 import { get, post, put, toast, toastError, useLive } from '../api';
-import { ActionButton, Badge, Card, Field, Loading, Notice, PageHeader, Toggle } from '../components/ui';
+import { ActionButton, Badge, Card, Field, Loading, Notice, PageHeader, ToggleRow, Tooltip } from '../components/ui';
 
 interface MgrResp {
   settings: ManagerSettings;
@@ -48,37 +48,43 @@ export default function Manager() {
           }
         >
           <div className="grid gap-3 md:grid-cols-2">
-            <Field label="Server name" hint={running ? 'Stop the server to rename' : 'Selects Server/<name>.ini, save and db'}>
+            <Field
+              label="Server name"
+              hint={running ? 'Stop the server to rename' : 'Selects Server/<name>.ini, save and db'}
+              tip="Name of this server instance. It selects Server/<name>.ini, the SandboxVars file, the world save folder and db/<name>.db. Changing it points the manager at a different (possibly new) world."
+            >
               <input className="input" disabled={running} value={s.serverName} onChange={(e) => set('serverName', e.target.value)} />
             </Field>
-            <Field label="Java max heap (-Xmx)" hint="Leave ~3 GB of the container/LXC for native memory">
+            <Field
+              label="Java max heap (-Xmx)"
+              hint="Leave ~3 GB of the container/LXC for native memory"
+              tip="Maximum Java heap, e.g. 8g or 6144m. Java also uses native memory outside the heap, so keep about 3 GB of the container free or the OOM killer may stop the server. Applies on next start."
+            >
               <input className="input" value={s.javaMaxMemory} onChange={(e) => set('javaMaxMemory', e.target.value)} placeholder="8g" />
             </Field>
-            <Field label="Java min heap (-Xms)">
+            <Field label="Java min heap (-Xms)" tip="Initial Java heap allocated at startup. Leave empty to let Java decide; setting it equal to -Xmx avoids heap resizing. Applies on next start.">
               <input className="input" value={s.javaMinMemory} onChange={(e) => set('javaMinMemory', e.target.value)} placeholder="(unset)" />
             </Field>
-            <Field label="Bind IP (-ip)">
+            <Field label="Bind IP (-ip)" tip="Network address the game server listens on. Leave empty to listen on all interfaces; only set it if the host has several IPs and you need to pick one.">
               <input className="input" value={s.bindIp} onChange={(e) => set('bindIp', e.target.value)} placeholder="all interfaces" />
             </Field>
-            <Field label="Extra JVM arguments" className="md:col-span-2">
+            <Field label="Extra JVM arguments" className="md:col-span-2" tip="Additional flags passed to Java itself, space separated. A bad flag can stop the server from starting.">
               <input className="input font-mono" value={s.extraJvmArgs} onChange={(e) => set('extraJvmArgs', e.target.value)} />
             </Field>
-            <Field label="Extra server arguments" className="md:col-span-2" hint="e.g. -no-worldgen, -debuglog=Network">
+            <Field label="Extra server arguments" className="md:col-span-2" hint="e.g. -no-worldgen, -debuglog=Network" tip="Additional command-line arguments passed to the Project Zomboid server itself (not Java), space separated. Applies on next start.">
               <input className="input font-mono" value={s.extraServerArgs} onChange={(e) => set('extraServerArgs', e.target.value)} />
             </Field>
           </div>
           <div className="mt-4 grid gap-2 md:grid-cols-2">
             {(
               [
-                ['autoStart', 'Start server when the manager starts'],
-                ['restartOnCrash', 'Restart automatically after a crash'],
-                ['updateOnStart', 'Update the game when the manager starts'],
-                ['validateOnUpdate', 'Validate files on every update'],
+                ['autoStart', 'Start server when the manager starts', 'Brings the game server up automatically when the manager (or its container/LXC) boots, so a host reboot does not leave the server down.'],
+                ['restartOnCrash', 'Restart automatically after a crash', 'If the server process exits unexpectedly, start it again. A deliberate Stop from the panel is never restarted.'],
+                ['updateOnStart', 'Update the game when the manager starts', 'Runs SteamCMD for the selected branch before the server starts so the game files are current. Adds startup time.'],
+                ['validateOnUpdate', 'Validate files on every update', 'Makes SteamCMD verify and repair all game files on each update. Slower, but fixes corrupted installs.'],
               ] as const
-            ).map(([k, l]) => (
-              <label key={k} className="flex items-center gap-2 text-sm">
-                <Toggle checked={!!s[k]} onChange={(v) => set(k, v)} /> {l}
-              </label>
+            ).map(([k, l, tip]) => (
+              <ToggleRow key={k} checked={!!s[k]} onChange={(v) => set(k, v)} label={l} tip={tip} />
             ))}
           </div>
         </Card>
@@ -92,23 +98,24 @@ export default function Manager() {
           }
         >
           <div className="grid gap-3 md:grid-cols-2">
-            <Field label="Restart warning minutes" hint="Countdown messages before restarts">
+            <Field label="Restart warning minutes" hint="Countdown messages before restarts" tip="Comma-separated minutes before a restart at which players get an in-game warning, e.g. 10,5,1. The restart happens when the countdown ends.">
               <input className="input" value={s.restartWarningMinutes.join(',')} onChange={(e) => set('restartWarningMinutes', e.target.value.split(',').map((x) => Number(x.trim())).filter((x) => x > 0))} />
             </Field>
-            <Field label="Warning message" hint="{minutes} and {reason} are replaced">
+            <Field label="Warning message" hint="{minutes} and {reason} are replaced" tip="Text broadcast at each countdown step. {minutes} becomes the minutes remaining and {reason} the restart reason (e.g. Scheduled restart).">
               <input className="input" value={s.restartWarningMessage} onChange={(e) => set('restartWarningMessage', e.target.value)} />
             </Field>
-            <Field label="When Workshop updates are found">
+            <Field label="When Workshop updates are found" tip="What the mod update check does when a subscribed Workshop item has changed. Notify only raises an alert; Restart runs the warning countdown and restarts so the server re-downloads the mods.">
               <select className="input" value={s.modUpdateAction} onChange={(e) => set('modUpdateAction', e.target.value as 'notify' | 'restart')}>
                 <option value="notify">Notify only</option>
                 <option value="restart">Restart with warnings</option>
               </select>
             </Field>
-            <Field label="Automatic backups to keep">
+            <Field label="Automatic backups to keep" tip="How many automatic backups (scheduled, pre-update, pre-wipe) are kept; older ones are deleted. Manual and imported backups are never pruned.">
               <input className="input" type="number" min={1} value={s.backupRetention} onChange={(e) => set('backupRetention', Number(e.target.value))} />
             </Field>
             <Field
               label="Steam branch"
+              tip="The Steam beta branch SteamCMD installs (Steam > Project Zomboid > Properties > Game Versions & Betas). It must match the version your players run or they cannot connect."
               hint={
                 <>
                   Which game version to install. Players must be on the same version. Save, then use "Update now" to switch.{' '}
@@ -139,7 +146,7 @@ export default function Manager() {
                 <input className="input" value={s.branch} onChange={(e) => set('branch', e.target.value)} placeholder="public" />
               )}
             </Field>
-            <Field label="Branch password">
+            <Field label="Branch password" tip="Only needed for password-protected beta branches (marked 'password' in the branch list). Leave empty for public and open branches.">
               <input className="input" type="password" value={s.branchPassword} onChange={(e) => set('branchPassword', e.target.value)} />
             </Field>
           </div>
@@ -149,10 +156,10 @@ export default function Manager() {
           title="Game server install"
           actions={
             <>
-              <ActionButton disabled={!!task} onAction={() => post('/api/server/install', {}).then(() => toast('Update started'))}>
+              <ActionButton disabled={!!task} title="Download or update the game server via SteamCMD for the selected Steam branch." onAction={() => post('/api/server/install', {}).then(() => toast('Update started'))}>
                 {status?.installed ? 'Update now' : 'Install now'}
               </ActionButton>
-              <ActionButton disabled={!!task} onAction={() => post('/api/server/install', { validate: true }).then(() => toast('Validation started'))} confirm="Validate all game files? This can take a while.">
+              <ActionButton disabled={!!task} title="Update and verify every game file, repairing any that are missing or corrupted. Slow." onAction={() => post('/api/server/install', { validate: true }).then(() => toast('Validation started'))} confirm="Validate all game files? This can take a while.">
                 Validate files
               </ActionButton>
             </>
@@ -181,7 +188,7 @@ export default function Manager() {
               {build.data?.warnings?.map((w) => (
                 <Notice key={w}>{w}</Notice>
               ))}
-              <ActionButton onAction={() => post('/api/build/analyze').then(() => (toast('Build re-analyzed'), build.refetch()))}>Re-analyze build</ActionButton>
+              <ActionButton title="Re-read the installed game files to refresh the known server options, sandbox options, commands and maps. Normally automatic after updates." onAction={() => post('/api/build/analyze').then(() => (toast('Build re-analyzed'), build.refetch()))}>Re-analyze build</ActionButton>
             </div>
           ) : (
             <p className="text-sm text-muted">Not installed yet.</p>
@@ -196,7 +203,9 @@ export default function Manager() {
         <Card title="Accounts">
           <div className="space-y-4">
             <div>
-              <div className="label mb-1">In-game admin account</div>
+              <Tooltip content="The in-game admin account the manager uses (and you can log into the game with). Set creates it or changes its password.">
+                <div className="label mb-1 cursor-help">In-game admin account</div>
+              </Tooltip>
               {q.data?.ingameAdmin && (
                 <p className="mb-2 text-sm">
                   User <code>{q.data.ingameAdmin.username}</code>, password{' '}
@@ -212,7 +221,9 @@ export default function Manager() {
               </div>
             </div>
             <div>
-              <div className="label mb-1">Panel password</div>
+              <Tooltip content="Password for signing into this web panel (not the game). Minimum 8 characters; you are signed out after changing it.">
+                <div className="label mb-1 cursor-help">Panel password</div>
+              </Tooltip>
               <div className="flex gap-2">
                 <input className="input" type="password" placeholder="current" value={pw.current} onChange={(e) => setPw({ ...pw, current: e.target.value })} />
                 <input className="input" type="password" placeholder="new (min 8)" value={pw.next} onChange={(e) => setPw({ ...pw, next: e.target.value })} />

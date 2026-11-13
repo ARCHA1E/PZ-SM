@@ -8,6 +8,7 @@ import {
   formatModsValue,
   parseChatLog,
   parseIni,
+  removeSandboxNamespaces,
   parseLogFileName,
   parseLogLine,
   parseMapInfo,
@@ -234,5 +235,25 @@ describe('translations, presets, logs, vdf', () => {
     const aw = v.AppWorkshop as Record<string, unknown>;
     expect(aw.appid).toBe('108600');
     expect(Object.keys(aw.WorkshopItemsInstalled as object).length).toBeGreaterThan(10);
+  });
+});
+
+describe('removeSandboxNamespaces', () => {
+  it('drops mod namespaces and keeps everything else byte-identical', () => {
+    const src = text('b42-modded_SandboxVars.lua');
+    const before = parseSandboxVars(src);
+    const vanilla = new Set(['ZombieLore', 'ZombieConfig', 'MultiplierConfig', 'Map', 'Basement']);
+    const mods = before.namespaces.filter((n) => !vanilla.has(n));
+    expect(mods.length).toBeGreaterThan(10);
+    const out = removeSandboxNamespaces(src, mods);
+    const after = parseSandboxVars(out);
+    expect(after.namespaces.filter((n) => !vanilla.has(n))).toEqual([]);
+    expect(after.namespaces).toEqual(before.namespaces.filter((n) => vanilla.has(n)));
+    const keep = before.entries.filter((e) => !mods.includes(e.namespace));
+    expect(after.entries.map((e) => [e.path, e.value])).toEqual(keep.map((e) => [e.path, e.value]));
+    expect(after.version).toBe(before.version);
+    expect(removeSandboxNamespaces(src, [])).toBe(src);
+    // No comment of a removed namespace survives.
+    expect(out).not.toMatch(new RegExp(`^\s*${mods[0]}\s*=`, 'm'));
   });
 });

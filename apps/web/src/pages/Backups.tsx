@@ -3,7 +3,7 @@ import type { BackupEntry } from '@pzsm/shared';
 import { Download, RotateCcw, Trash2, Upload } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { api, del, fmtBytes, fmtDate, get, post, toast, toastError, useLive } from '../api';
-import { ActionButton, Badge, Card, Empty, Loading, Notice, PageHeader } from '../components/ui';
+import { ActionButton, Badge, Card, Empty, InfoTip, Loading, Notice, PageHeader, Tooltip } from '../components/ui';
 import { ImportConfigModal } from '../components/ImportConfigModal';
 
 export default function Backups() {
@@ -26,8 +26,10 @@ export default function Backups() {
       <div className="grid gap-4 lg:grid-cols-2">
         <Card title="Create backup">
           <div className="flex gap-2">
-            <input className="input" placeholder="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
-            <ActionButton variant="primary" disabled={!!task} onAction={() => post('/api/backups', { note: note || undefined }).then(() => (toast('Backup created'), setNote(''), qc.invalidateQueries({ queryKey: ['backups'] })))}>
+            <Tooltip content="Optional label stored with the backup, e.g. 'before mod change'. Manual backups are never pruned by retention." className="flex-1">
+              <input className="input" placeholder="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
+            </Tooltip>
+            <ActionButton variant="primary" disabled={!!task} title="Archive the world save, player save, server config and database. A running server is saved first." onAction={() => post('/api/backups', { note: note || undefined }).then(() => (toast('Backup created'), setNote(''), qc.invalidateQueries({ queryKey: ['backups'] })))}>
               Back up now
             </ActionButton>
           </div>
@@ -41,7 +43,7 @@ export default function Backups() {
             </button>
             .
           </p>
-          <label className={`btn ${!stopped || uploading ? 'pointer-events-none opacity-50' : ''}`}>
+          <label title="Accepts .zip, .tar.gz or .tgz. The server must be stopped; the current data is backed up before it is replaced." className={`btn ${!stopped || uploading ? 'pointer-events-none opacity-50' : ''}`}>
             <Upload className="h-4 w-4" /> {uploading ? 'Uploading…' : 'Choose archive'}
             <input
               type="file"
@@ -80,7 +82,11 @@ export default function Backups() {
             <thead>
               <tr>
                 <th>Created</th>
-                <th>Kind</th>
+                <th>
+                  <span className="inline-flex items-center gap-1">
+                    Kind <InfoTip content="manual and import backups are kept forever. Automatic kinds (scheduled, pre-update, pre-wipe...) are pruned to the retention count set on the Manager page." />
+                  </span>
+                </th>
                 <th className="hidden md:table-cell">Note</th>
                 <th>Size</th>
                 <th />
@@ -100,13 +106,13 @@ export default function Backups() {
                   <td className="text-xs">{fmtBytes(b.size)}</td>
                   <td className="text-right">
                     <div className="flex justify-end gap-1">
-                      <a className="btn btn-ghost px-2" href={`/api/backups/${encodeURIComponent(b.id)}/download`} title="Download">
+                      <a className="btn btn-ghost px-2" href={`/api/backups/${encodeURIComponent(b.id)}/download`} title="Download this backup archive">
                         <Download className="h-4 w-4" />
                       </a>
-                      <ActionButton variant="ghost" disabled={!stopped || !!task} onAction={() => post(`/api/backups/${encodeURIComponent(b.id)}/restore`).then(() => toast('Restore started'))} confirm="Restore this backup? The current world is backed up first and then replaced." title="Restore">
+                      <ActionButton variant="ghost" disabled={!stopped || !!task} onAction={() => post(`/api/backups/${encodeURIComponent(b.id)}/restore`).then(() => toast('Restore started'))} confirm="Restore this backup? The current world is backed up first and then replaced." title="Restore: replaces the current world, config and database with this backup (needs the server stopped; the current state is backed up first)">
                         <RotateCcw className="h-4 w-4" />
                       </ActionButton>
-                      <ActionButton variant="ghost" onAction={() => del(`/api/backups/${encodeURIComponent(b.id)}`).then(() => qc.invalidateQueries({ queryKey: ['backups'] }))} confirm="Delete this backup permanently?" title="Delete">
+                      <ActionButton variant="ghost" onAction={() => del(`/api/backups/${encodeURIComponent(b.id)}`).then(() => qc.invalidateQueries({ queryKey: ['backups'] }))} confirm="Delete this backup permanently?" title="Delete this backup permanently">
                         <Trash2 className="h-4 w-4" />
                       </ActionButton>
                     </div>

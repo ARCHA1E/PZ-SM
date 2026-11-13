@@ -3,7 +3,7 @@ import type { MapEntry, SpawnRegionView } from '@pzsm/shared';
 import { Plus, Trash2, Wand2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { get, post, put, toast, toastError, useLive } from '../api';
-import { ActionButton, Badge, Button, Card, Empty, Loading, Notice, PageHeader, SortableList } from '../components/ui';
+import { ActionButton, Badge, Button, Card, Empty, InfoTip, Loading, Notice, PageHeader, SortableList } from '../components/ui';
 
 type Catalog = { maps: (MapEntry & { modEnabled?: boolean })[]; order: string[]; problems: string[] };
 type Spawn = { regions: SpawnRegionView[]; exists: boolean; suggested: { name: string; file?: string; serverfile?: string }[] };
@@ -38,7 +38,12 @@ export default function Maps() {
       )}
       <div className="grid gap-4 xl:grid-cols-2">
         <Card
-          title="Active maps (Map=)"
+          title={
+            <span className="inline-flex items-center gap-1.5">
+              Active maps (Map=)
+              <InfoTip content="The Map= line of the server ini: map folders loaded in order. Maps earlier in the list override later ones, so mod maps go before 'Muldraugh, KY'. Takes effect on restart." />
+            </span>
+          }
           actions={
             <ActionButton
               variant="primary"
@@ -93,7 +98,7 @@ export default function Maps() {
                       {m.lots.length ? ` · uses ${m.lots.join(', ')}` : ''}
                     </div>
                   </div>
-                  <Button onClick={() => setOrder([m.folder, ...current])}>
+                  <Button title="Add to the top of the Map= list so it overrides the vanilla world. Save to apply." onClick={() => setOrder([m.folder, ...current])}>
                     <Plus className="h-4 w-4" /> Add
                   </Button>
                 </li>
@@ -104,13 +109,18 @@ export default function Maps() {
       </div>
 
       <Card
-        title="Spawn regions"
+        title={
+          <span className="inline-flex items-center gap-1.5">
+            Spawn regions
+            <InfoTip content="Where new characters can choose to start. Each region points to a spawnpoints.lua file, either inside a map folder (media/maps/...) or a server-side file in the Server folder. Applies on restart." />
+          </span>
+        }
         actions={
           <>
-            <Button onClick={() => setRegions(spawn.data?.suggested.map((s) => ({ ...s, valid: true })) ?? [])}>
+            <Button title="Replace the list with one region per active map that ships a spawnpoints file." onClick={() => setRegions(spawn.data?.suggested.map((s) => ({ ...s, valid: true })) ?? [])}>
               <Wand2 className="h-4 w-4" /> Generate from active maps
             </Button>
-            <Button onClick={() => setRegions([...regs, { name: 'New region', file: 'media/maps/Muldraugh, KY/spawnpoints.lua', valid: true }])}>
+            <Button title="Add an empty region row pointing at the vanilla Muldraugh spawn points." onClick={() => setRegions([...regs, { name: 'New region', file: 'media/maps/Muldraugh, KY/spawnpoints.lua', valid: true }])}>
               <Plus className="h-4 w-4" /> Add
             </Button>
             <ActionButton
@@ -136,8 +146,16 @@ export default function Maps() {
           <table className="table">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Spawnpoints file</th>
+                <th>
+                  <span className="inline-flex items-center gap-1">
+                    Name <InfoTip content="Region name shown to players on the spawn selection screen." />
+                  </span>
+                </th>
+                <th>
+                  <span className="inline-flex items-center gap-1">
+                    Spawnpoints file <InfoTip content="A path containing '/' (e.g. media/maps/Muldraugh, KY/spawnpoints.lua) is a map file; a bare filename is a file in the server's Server folder (like the custom spawn points below)." />
+                  </span>
+                </th>
                 <th>Status</th>
                 <th />
               </tr>
@@ -177,16 +195,16 @@ export default function Maps() {
       <Card title="World operations" className="border-bad/40">
         <p className="mb-3 text-sm text-muted">These need the server to be stopped. A backup is taken automatically before destructive operations.</p>
         <div className="flex flex-wrap gap-2">
-          <ActionButton disabled={running} onAction={() => post('/api/world/soft-reset').then(() => toast('Soft reset will run on next start'))} confirm="Soft reset on next start? The world resets (buildings, loot, zombies) but player characters are kept.">
+          <ActionButton disabled={running} title="Resets the world on the next start (map data such as buildings, loot and zombies) while keeping player characters." onAction={() => post('/api/world/soft-reset').then(() => toast('Soft reset will run on next start'))} confirm="Soft reset on next start? The world resets (buildings, loot, zombies) but player characters are kept.">
             Soft reset on next start
           </ActionButton>
-          <ActionButton disabled={running} onAction={() => post('/api/world/new-worldgen').then(() => toast('World generation data removed'))} confirm="Delete map_worldgen.bin so a changed Seed takes effect?">
+          <ActionButton disabled={running} title="Deletes map_worldgen.bin so a changed Seed is used for newly generated terrain. Saved map data is kept." onAction={() => post('/api/world/new-worldgen').then(() => toast('World generation data removed'))} confirm="Delete map_worldgen.bin so a changed Seed takes effect?">
             Regenerate worldgen (new seed)
           </ActionButton>
-          <ActionButton variant="danger" disabled={running} onAction={() => post('/api/world/wipe-world').then(() => toast('World wiped'))} confirm="Wipe the world and all characters? Accounts, roles and bans are kept.">
+          <ActionButton variant="danger" disabled={running} title="Deletes the world save and player characters. Accounts, roles and bans in the server database are kept. A backup is taken first." onAction={() => post('/api/world/wipe-world').then(() => toast('World wiped'))} confirm="Wipe the world and all characters? Accounts, roles and bans are kept.">
             Wipe world
           </ActionButton>
-          <ActionButton variant="danger" disabled={running} onAction={() => post('/api/world/wipe-all').then(() => toast('Everything wiped'))} confirm="Wipe world AND server database (accounts, roles, bans)? This is a full reset.">
+          <ActionButton variant="danger" disabled={running} title="Wipe world plus the server database (accounts, roles, bans, whitelist). A backup is taken first." onAction={() => post('/api/world/wipe-all').then(() => toast('Everything wiped'))} confirm="Wipe world AND server database (accounts, roles, bans)? This is a full reset.">
             Full reset
           </ActionButton>
         </div>
@@ -207,7 +225,7 @@ function SpawnPointsCard({ data, onSaved }: { data?: { points: Record<string, Pt
       title={`Custom spawn points (${data?.file ?? ''})`}
       actions={
         <>
-          <Button onClick={() => setPts({ ...cur, unemployed: [...(cur.unemployed ?? []), { posX: 0, posY: 0, posZ: 0 }] })}>
+          <Button title="Add a spawn point for the 'unemployed' profession (used for all professions unless others are listed)." onClick={() => setPts({ ...cur, unemployed: [...(cur.unemployed ?? []), { posX: 0, posY: 0, posZ: 0 }] })}>
             <Plus className="h-4 w-4" /> Add point
           </Button>
           <ActionButton
@@ -233,9 +251,21 @@ function SpawnPointsCard({ data, onSaved }: { data?: { points: Record<string, Pt
         <table className="table">
           <thead>
             <tr>
-              <th>Profession</th>
-              <th>Cell X / Y</th>
-              <th>Pos X / Y / Z</th>
+              <th>
+                <span className="inline-flex items-center gap-1">
+                  Profession <InfoTip content="Profession id this point applies to; 'unemployed' is the fallback for professions without their own entry." />
+                </span>
+              </th>
+              <th>
+                <span className="inline-flex items-center gap-1">
+                  Cell X / Y <InfoTip content="Optional 256x256 map cell indices. Leave empty to use absolute world coordinates in Pos." />
+                </span>
+              </th>
+              <th>
+                <span className="inline-flex items-center gap-1">
+                  Pos X / Y / Z <InfoTip content="Tile coordinates (relative to the cell if Cell X/Y is set, otherwise absolute). Z is the floor; 0 is ground level." />
+                </span>
+              </th>
               <th />
             </tr>
           </thead>

@@ -1,6 +1,7 @@
 import clsx from 'clsx';
-import { Loader2, X } from 'lucide-react';
-import { useEffect, useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { Info, Loader2, X } from 'lucide-react';
+import { useEffect, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { toastError, useToasts } from '../api';
 
 export function Button({
@@ -49,8 +50,8 @@ export function Card({ title, actions, children, className, bodyClass }: { title
   return (
     <section className={clsx('card', className)}>
       {(title || actions) && (
-        <header className="flex items-center justify-between gap-3 border-b border-line px-4 py-2.5">
-          <h2 className="text-sm font-semibold">{title}</h2>
+        <header className="flex items-center justify-between gap-3 border-b border-line/80 px-4 py-2.5">
+          <h2 className="min-w-0 text-sm font-semibold">{title}</h2>
           <div className="flex flex-wrap items-center gap-2">{actions}</div>
         </header>
       )}
@@ -90,12 +91,98 @@ export function Toggle({ checked, onChange, disabled, label }: { checked: boolea
   );
 }
 
-export function Field({ label, hint, children, className }: { label: ReactNode; hint?: ReactNode; children: ReactNode; className?: string }) {
+export function Field({ label, hint, tip, children, className }: { label: ReactNode; hint?: ReactNode; tip?: ReactNode; children: ReactNode; className?: string }) {
   return (
     <label className={clsx('block space-y-1', className)}>
-      <span className="label">{label}</span>
+      {tip ? (
+        <Tooltip content={tip}>
+          <span className="label inline-flex cursor-help items-center gap-1">
+            {label}
+            <Info className="h-3 w-3 opacity-60" />
+          </span>
+        </Tooltip>
+      ) : (
+        <span className="label">{label}</span>
+      )}
       {children}
       {hint && <span className="block text-xs text-muted">{hint}</span>}
+    </label>
+  );
+}
+
+/**
+ * Hover/focus tooltip rendered in a portal so it is never clipped by scroll containers.
+ * `content` may be rich (ReactNode); nothing renders when it is empty.
+ */
+export function Tooltip({ content, children, className, delay = 250, side = 'top' }: { content: ReactNode; children: ReactNode; className?: string; delay?: number; side?: 'top' | 'bottom' }) {
+  const anchor = useRef<HTMLSpanElement>(null);
+  const tip = useRef<HTMLDivElement>(null);
+  const timer = useRef<ReturnType<typeof setTimeout>>();
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ left: number; top: number; below: boolean } | null>(null);
+  const show = () => {
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setOpen(true), delay);
+  };
+  const hide = () => {
+    clearTimeout(timer.current);
+    setOpen(false);
+    setPos(null);
+  };
+  useEffect(() => () => clearTimeout(timer.current), []);
+  useLayoutEffect(() => {
+    if (!open || !anchor.current || !tip.current) return;
+    const a = anchor.current.getBoundingClientRect();
+    const t = tip.current.getBoundingClientRect();
+    const m = 8;
+    let below = side === 'bottom';
+    if (!below && a.top - t.height - m < 4) below = true;
+    if (below && a.bottom + t.height + m > window.innerHeight - 4 && a.top - t.height - m >= 4) below = false;
+    const left = Math.max(8, Math.min(window.innerWidth - t.width - 8, a.left + a.width / 2 - t.width / 2));
+    setPos({ left, top: below ? a.bottom + m : a.top - t.height - m, below });
+  }, [open, side]);
+  if (content === undefined || content === null || content === '' || content === false) return <>{children}</>;
+  return (
+    <>
+      <span ref={anchor} className={clsx('inline-flex max-w-full', className)} onMouseEnter={show} onMouseLeave={hide} onFocus={show} onBlur={hide}>
+        {children}
+      </span>
+      {open &&
+        createPortal(
+          <div
+            ref={tip}
+            role="tooltip"
+            style={{ left: pos?.left ?? -9999, top: pos?.top ?? -9999 }}
+            className="pointer-events-none fixed z-[70] max-w-sm rounded-lg border border-line bg-panel px-3 py-2 text-xs leading-relaxed text-fg shadow-xl shadow-black/30"
+          >
+            {content}
+          </div>,
+          document.body,
+        )}
+    </>
+  );
+}
+
+/** Small "i" icon with a tooltip. */
+export function InfoTip({ content, className }: { content: ReactNode; className?: string }) {
+  if (!content) return null;
+  return (
+    <Tooltip content={content}>
+      <span tabIndex={0} className={clsx('inline-flex cursor-help text-muted hover:text-fg', className)} aria-label="More info">
+        <Info className="h-3.5 w-3.5" />
+      </span>
+    </Tooltip>
+  );
+}
+
+/** Label + toggle row with an optional tooltip. */
+export function ToggleRow({ checked, onChange, label, tip, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: ReactNode; tip?: ReactNode; disabled?: boolean }) {
+  return (
+    <label className="flex items-center gap-2 text-sm">
+      <Toggle checked={checked} onChange={onChange} disabled={disabled} />
+      <Tooltip content={tip}>
+        <span className={clsx(tip && 'cursor-help decoration-line decoration-dotted underline-offset-4 hover:underline')}>{label}</span>
+      </Tooltip>
     </label>
   );
 }
@@ -187,7 +274,7 @@ export function PageHeader({ title, subtitle, actions }: { title: ReactNode; sub
   return (
     <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
       <div>
-        <h1 className="text-xl font-semibold">{title}</h1>
+        <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
         {subtitle && <p className="mt-0.5 text-sm text-muted">{subtitle}</p>}
       </div>
       <div className="flex flex-wrap items-center gap-2">{actions}</div>

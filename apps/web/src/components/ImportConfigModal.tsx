@@ -4,7 +4,7 @@ import clsx from 'clsx';
 import { CheckCircle2, FileText, Upload, XCircle } from 'lucide-react';
 import { useState } from 'react';
 import { api, del, post, toast, toastError, useLive } from '../api';
-import { Badge, Button, Modal, Notice, Toggle } from './ui';
+import { Badge, Button, InfoTip, Modal, Notice, Toggle } from './ui';
 
 const KIND_LABEL: Record<string, string> = {
   ini: 'Server options (.ini)',
@@ -96,7 +96,7 @@ export function ImportConfigModal({ open, onClose }: { open: boolean; onClose: (
           >
             <Upload className="h-6 w-6 text-muted" />
             {busy ? 'Reading files…' : 'Drop the files here, or click to choose'}
-            <input type="file" multiple accept=".ini,.lua,.zip" className="hidden" disabled={busy} onChange={(e) => e.target.files && void upload(e.target.files)} />
+            <input type="file" multiple title="Select the .ini and .lua files together, or a .zip containing them" accept=".ini,.lua,.zip" className="hidden" disabled={busy} onChange={(e) => e.target.files && void upload(e.target.files)} />
           </label>
         </div>
       ) : (
@@ -176,21 +176,23 @@ export function ImportConfigModal({ open, onClose }: { open: boolean; onClose: (
           )}
 
           <div className="space-y-2 rounded-md border border-line p-3">
-            <Option checked={opts.keepPorts} onChange={(v) => setOpts({ ...opts, keepPorts: v })} title="Keep this server's ports" hint="Recommended: the game ports must match the ports published by Docker/LXC. RCON stays managed by PZ-SM either way." />
+            <Option checked={opts.keepPorts} onChange={(v) => setOpts({ ...opts, keepPorts: v })} title="Keep this server's ports" tip="Keeps this server's DefaultPort, UDPPort and related port settings instead of the imported ones, so the published Docker/LXC ports still work." hint="Recommended: the game ports must match the ports published by Docker/LXC. RCON stays managed by PZ-SM either way." />
             <Option
               checked={opts.downloadMods}
               onChange={(v) => setOpts({ ...opts, downloadMods: v })}
               title="Download the Workshop mods now"
+              tip="Fetches the imported Workshop items with SteamCMD during the import. If off, the server downloads them itself on its next start (slower first boot)."
               hint={p.workshopToDownload.length ? `${p.workshopToDownload.length} item(s) to download with SteamCMD. Otherwise the server fetches them on its next start.` : 'All items are already downloaded; updates are checked.'}
             />
             <Option
               checked={opts.wipeWorld}
               onChange={(v) => setOpts({ ...opts, wipeWorld: v })}
               title="Start a fresh world"
+              tip="Deletes the current world save so the imported settings (map, sandbox, seed) start from a clean world. Accounts, roles and bans are kept and a backup is taken first."
               hint={p.current.hasWorld ? 'Deletes the current world save (accounts, roles and bans are kept). A backup is taken first.' : 'There is no world yet; one is created on first start.'}
               danger
             />
-            {!p.current.serverRunning && <Option checked={opts.startAfter} onChange={(v) => setOpts({ ...opts, startAfter: v })} title="Start the server when done" />}
+            {!p.current.serverRunning && <Option checked={opts.startAfter} onChange={(v) => setOpts({ ...opts, startAfter: v })} title="Start the server when done" tip="Starts the game server automatically once the import has finished." />}
             {p.current.hasConfig && <p className="text-xs text-muted">The current config is backed up first; you can restore it from Backups.</p>}
           </div>
 
@@ -216,14 +218,17 @@ export function ImportConfigModal({ open, onClose }: { open: boolean; onClose: (
   );
 }
 
-function Option({ checked, onChange, title, hint, danger }: { checked: boolean; onChange: (v: boolean) => void; title: string; hint?: string; danger?: boolean }) {
+function Option({ checked, onChange, title, hint, tip, danger }: { checked: boolean; onChange: (v: boolean) => void; title: string; hint?: string; tip?: string; danger?: boolean }) {
   return (
     <label className="flex items-start gap-3 text-sm">
       <span className="mt-0.5">
         <Toggle checked={checked} onChange={onChange} label={title} />
       </span>
       <span>
-        <span className={clsx('font-medium', danger && checked && 'text-bad')}>{title}</span>
+        <span className={clsx('inline-flex items-center gap-1 font-medium', danger && checked && 'text-bad')}>
+          {title}
+          <InfoTip content={tip} />
+        </span>
         {hint && <span className="block text-xs text-muted">{hint}</span>}
       </span>
     </label>

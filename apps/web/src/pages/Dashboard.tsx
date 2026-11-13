@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { fmtBytes, fmtDuration, get, post, toast, useLive } from '../api';
 import { StateBadge } from '../components/StateBadge';
-import { ActionButton, Badge, Card, Notice, PageHeader } from '../components/ui';
+import { ActionButton, Badge, Card, InfoTip, Notice, PageHeader } from '../components/ui';
 
 export default function Dashboard() {
   const status = useLive((s) => s.status);
@@ -30,22 +30,22 @@ export default function Dashboard() {
         actions={
           <>
             {!status.installed ? (
-              <ActionButton variant="primary" disabled={busy} onAction={() => post('/api/server/install')}>
+              <ActionButton variant="primary" disabled={busy} title="Download the game server with SteamCMD (uses the Steam branch from the Manager page)" onAction={() => post('/api/server/install')}>
                 <Download className="h-4 w-4" /> Install server
               </ActionButton>
             ) : status.state === 'stopped' || status.state === 'crashed' ? (
-              <ActionButton variant="primary" disabled={busy} onAction={() => post('/api/server/start')}>
+              <ActionButton variant="primary" disabled={busy} title="Start the game server" onAction={() => post('/api/server/start')}>
                 <Play className="h-4 w-4" /> Start
               </ActionButton>
             ) : (
               <>
-                <ActionButton disabled={!running} onAction={() => post('/api/server/restart', { warn: true }).then(() => toast('Restart scheduled with in-game warnings'))}>
+                <ActionButton disabled={!running} title="Save and restart after the in-game countdown warnings configured on the Manager page" onAction={() => post('/api/server/restart', { warn: true }).then(() => toast('Restart scheduled with in-game warnings'))}>
                   <RotateCcw className="h-4 w-4" /> Restart (warn)
                 </ActionButton>
-                <ActionButton disabled={!running} onAction={() => post('/api/server/restart')} confirm="Restart now without warning players?">
+                <ActionButton disabled={!running} title="Restart immediately with no warning; players are disconnected" onAction={() => post('/api/server/restart')} confirm="Restart now without warning players?">
                   <Zap className="h-4 w-4" /> Restart now
                 </ActionButton>
-                <ActionButton variant="danger" onAction={() => post('/api/server/stop')} confirm="Stop the server? Players will be disconnected.">
+                <ActionButton variant="danger" title="Save the world and shut the server down; players are disconnected" onAction={() => post('/api/server/stop')} confirm="Stop the server? Players will be disconnected.">
                   <Square className="h-4 w-4" /> Stop
                 </ActionButton>
               </>
@@ -108,19 +108,19 @@ export default function Dashboard() {
                 setMsg('');
               }}
             >
-              <input className="input" placeholder="Broadcast message to players" value={msg} onChange={(e) => setMsg(e.target.value)} disabled={!running} />
-              <button className="btn" disabled={!running}>
+              <input className="input" title="Shown to everyone online as a server message (servermsg). Needs the server running." placeholder="Broadcast message to players" value={msg} onChange={(e) => setMsg(e.target.value)} disabled={!running} />
+              <button className="btn" disabled={!running} title="Send the message to all online players">
                 Send
               </button>
             </form>
             <div className="flex flex-wrap gap-2">
-              <ActionButton disabled={!running} onAction={() => post('/api/server/save').then(() => toast('World saved'))}>
+              <ActionButton disabled={!running} title="Write the world to disk now without restarting" onAction={() => post('/api/server/save').then(() => toast('World saved'))}>
                 <Save className="h-4 w-4" /> Save world
               </ActionButton>
-              <ActionButton disabled={busy} onAction={() => post('/api/backups', {}).then(() => toast('Backup created'))}>
+              <ActionButton disabled={busy} title="Create a manual backup of the world, config and database (never auto-pruned)" onAction={() => post('/api/backups', {}).then(() => toast('Backup created'))}>
                 Backup now
               </ActionButton>
-              <ActionButton onAction={() => post<{ updateAvailable: boolean; latest?: string }>('/api/server/check-update').then((r) => toast(r.updateAvailable ? `Update available (build ${r.latest})` : 'Game server is up to date', 'info'))}>
+              <ActionButton title="Ask Steam whether a newer build exists on the selected branch. Does not install anything." onAction={() => post<{ updateAvailable: boolean; latest?: string }>('/api/server/check-update').then((r) => toast(r.updateAvailable ? `Update available (build ${r.latest})` : 'Game server is up to date', 'info'))}>
                 Check for update
               </ActionButton>
             </div>

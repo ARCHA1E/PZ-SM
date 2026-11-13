@@ -18,7 +18,9 @@ import { listLogFiles, readLog, searchLogs } from '../services/logs.js';
 import { getServerSpawnPoints, getSpawnRegions, mapCatalog, setMapOrder, setServerSpawnPoints, setSpawnRegions, suggestSpawnRegions, worldOperation, type WorldOp } from '../services/maps.js';
 import { metricsHistory } from '../services/metrics.js';
 import { findModPoster, invalidateModScan, modsView, removeWorkshopItem, setActiveMods, getModState, setWorkshopItems } from '../services/mods.js';
-import { afterModsChanged, checkGameUpdate, checkModUpdates, downloadWorkshop, installOrUpdate, resumeWorkshopDownload } from '../services/operations.js';
+import { afterModsChanged, checkGameUpdate, checkModUpdates, downloadWorkshop, installOrUpdate, installWorkshopItems, refreshWorkshopMeta, resumeWorkshopDownload } from '../services/operations.js';
+import { browseWorkshop, getItemDetails, resolveInstallPlan } from '../services/workshopBrowse.js';
+import { previewModWipe, wipeMods } from '../services/modWipe.js';
 import { clearWorkshopJob, workshopJobStatus } from '../services/workshopDownloader.js';
 import { installPaths, serverPaths } from '../services/paths.js';
 import { addUser, banUser, discardPending, permissionsView, removeUser, setUserPassword, setUserRole, submitOp, unban } from '../services/permissions.js';
@@ -192,7 +194,16 @@ export async function apiRoutes(app: FastifyInstance) {
   });
 
   // ---------------------------------------------------------------- mods & workshop
-  app.get('/api/mods', async () => modsView());
+  app.get('/api/mods', async () => {
+    const view = await modsView();
+    // Items added before tags/authors were tracked: fetch them once in the background.
+    const stale = view.workshop.filter((w) => !w.tags || (w.author && !w.author.name)).map((w) => w.workshopId);
+    if (stale.length && Date.now() - kvGet<number>('workshop_meta_refreshed', 0) > 6 * 3600_000) {
+      kvSet('workshop_meta_refreshed', Date.now());
+      background(refreshWorkshopMeta(stale));
+    }
+    return view;
+  });
   app.post('/api/mods/rescan', async () => {
     invalidateModScan();
     return modsView();
@@ -255,9 +266,72 @@ export async function apiRoutes(app: FastifyInstance) {
   app.post('/api/workshop/refresh-meta', async () => {
     const st = await getModState();
     const view = await modsView();
-    await getPublishedFileDetails([...new Set([...st.workshopItems, ...view.workshop.map((w) => w.workshopId)])]);
+    await refreshWorkshopMeta([...new Set([...st.workshopItems, ...view.workshop.map((w) => w.workshopId)])]);
     return { ok: true };
   });
+  // ---------------------------------------------------------------- workshop browser
+  const workshopKnown = async () => {
+    const [st, view] = await Promise.all([getModState(), modsView()]);
+    return { inServer: new Set(st.workshopItems), installed: new Set(view.workshop.filter((w) => w.installed).map((w) => w.workshopId)) };
+  };
+  const csv = z
+    .union([z.string(), z.array(z.string())])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : (Array.isArray(v) ? v : v.split(',')).map((x) => x.trim()).filter(Boolean)));
+  app.get('/api/workshop/browse', async (req) => {
+    const b = z
+      .object({
+        q: z.string().max(200).optional(),
+        sort: z.enum(['trend', 'mostrecent', 'lastupdated', 'totaluniquesubscribers', 'toprated', 'textsearch']).optional(),
+        days: z.coerce.number().int().optional(),
+        tags: csv,
+        excludeTags: csv,
+        page: z.coerce.number().int().min(1).max(1000).optional(),
+        section: z.enum(['items', 'collections']).optional(),
+      })
+      .parse(req.query);
+    const [r, known] = await Promise.all([browseWorkshop(b), workshopKnown()]);
+    return { ...r, items: r.items.map((i) => ({ ...i, inServer: known.inServer.has(i.workshopId), installed: known.installed.has(i.workshopId) })) };
+  });
+  app.get('/api/workshop/item/:id', async (req) => {
+    const { id } = req.params as { id: string };
+    if (!/^\d{6,12}$/.test(id)) throw new Error('Bad Workshop id');
+    const [d, known] = await Promise.all([getItemDetails(id), workshopKnown()]);
+    return {
+      ...d,
+      inServer: known.inServer.has(id),
+      installed: known.installed.has(id),
+      requiredItems: d.requiredItems.map((r) => ({ ...r, inServer: known.inServer.has(r.workshopId), installed: known.installed.has(r.workshopId) })),
+    };
+  });
+  app.post('/api/workshop/plan', async (req) => {
+    const b = z.object({ refs: z.array(z.string()).min(1).max(500) }).parse(req.body);
+    const ids = b.refs.map((r) => {
+      const id = parseWorkshopRef(r);
+      if (!id) throw new Error(`Not a Workshop id/URL: ${r}`);
+      return id;
+    });
+    return resolveInstallPlan([...new Set(ids)], await workshopKnown());
+  });
+  app.post('/api/workshop/install', async (req) => {
+    const b = z.object({ ids: z.array(z.string().regex(/^\d{6,12}$/)).min(1).max(1000), enable: z.enum(['auto', 'none']).default('auto') }).parse(req.body);
+    if (currentTask()) throw Object.assign(new Error(`Busy: ${currentTask()!.label}`), { statusCode: 409 });
+    background(
+      installWorkshopItems([...new Set(b.ids)], { enable: b.enable }).then((r) => {
+        if (r.needsChoice.length) supervisor.sys(`Workshop item(s) ${r.needsChoice.join(', ')} contain several mods; choose which to enable on the Mods page`);
+      }),
+    );
+    return { ok: true, count: b.ids.length };
+  });
+
+  // ---------------------------------------------------------------- mod wipe
+  app.get('/api/mods/wipe/preview', async () => previewModWipe());
+  app.post('/api/mods/wipe', async (req) => {
+    const b = z.object({ deleteFiles: z.boolean().optional(), sandboxOnly: z.boolean().optional() }).parse(req.body ?? {});
+    if (currentTask()) throw Object.assign(new Error(`Busy: ${currentTask()!.label}`), { statusCode: 409 });
+    return runTask('mods', b.sandboxOnly ? 'Reset mod sandbox options' : 'Remove all mods', (ctx) => wipeMods(b, ctx));
+  });
+
   app.get('/api/mods/poster/:wid/:id', async (req, reply) => {
     const { wid, id } = req.params as { wid: string; id: string };
     const p = await findModPoster(wid, id);

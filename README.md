@@ -18,13 +18,17 @@ The panel never hides anything. Keys found in your files that no schema describe
 
 ## Features
 
+- **Web panel**: top navigation, dull green dark/light themes, and hover tooltips on every setting (description, default, range, and whether it applies live or on restart).
 - **Dashboard**: start/stop/restart (with in-game countdown), crash auto-restart, CPU, RAM and player history, update notices.
 - **Console**: live output over WebSocket, and commands over RCON with autocomplete from the build's command list.
 - **Server Settings / Sandbox**: typed forms grouped like the in-game UI, plus one page per mod. Also: search, "changed from default" filter, reset to default, and live vs restart badges.
   - While the server runs, ini changes go through `changeoption`, so they are applied immediately where possible and never overwritten by the server.
   - Sandbox presets: apply the game presets or `.cfg` files, upload, and export.
 - **Mods**:
-  - Add Workshop items by ID, URL or collection; they download through SteamCMD.
+  - **Browse the Steam Workshop** from the panel: search, sort (popular, top rated, newest, recently updated), mods or collections, and tag filters you can require or exclude (Build 42 is required by default). Item pages show the description, stats and "Required items". No Steam API key is needed; if you set one on the Manager page, the official API is used instead.
+  - **Install with dependencies**: pick items, collections or paste IDs/URLs; PZ-SM expands collections, follows "Required items" transitively, shows the full list for review, then downloads everything and enables the mods in dependency order. Items with several mods (often variants) are left for you to pick.
+  - Installed list grouped by Workshop item, with filters for status (enabled, problems, updates, not downloaded, needs a choice), author, tags and content (sandbox options, maps), and a **configure** link straight to each mod's sandbox options.
+  - **Remove all mods** while keeping every vanilla setting (clears `Mods=`/`WorkshopItems=`, drops mod sections from SandboxVars, keeps only vanilla maps and spawn regions), or **reset mod sandbox options** to their defaults. A backup is taken first; deleting downloaded files is optional.
   - Enable mods with automatic dependencies, and auto-sort the load order from `require` / `loadModAfter` / `loadModBefore`.
   - B42 version-folder resolution (`42/`, `42.13/`, `common/`) and problem detection: missing deps, B41-only mods, incompatibilities, version ranges.
   - Downloads survive flaky Steam connections. When SteamCMD loses its connection (every remaining item fails with "No Connection"), the session is killed and a new one continues from the first missing item, with backoff. Items already up to date are skipped, and an interrupted download resumes after a restart or from the Mods page.
@@ -148,7 +152,7 @@ Zip the server's files from `%USERPROFILE%\Zomboid`, keeping the folder structur
 1. Stop the server.
 2. Go to **Backups → Import**.
 3. Upload the zip. It is renamed to the PZSM server name, and a backup of the current world is taken first.
-4. Go to **Mods → Download / update all**. PZSM reads `WorkshopItems=` and fetches everything.
+4. Go to **Mods → Update all**. PZSM reads `WorkshopItems=` and fetches everything.
 5. Start the server.
 
 ## Game updates and versions

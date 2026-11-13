@@ -20,6 +20,12 @@ const MIGRATIONS: string[] = [
    CREATE TABLE manifests (key TEXT PRIMARY KEY, created_at TEXT NOT NULL, data TEXT NOT NULL);
    CREATE TABLE workshop_meta (workshop_id TEXT PRIMARY KEY, title TEXT, preview TEXT, time_updated INTEGER, size INTEGER, fetched_at INTEGER);
    CREATE TABLE players_seen (username TEXT PRIMARY KEY, steamid TEXT, first_seen TEXT, last_seen TEXT, last_ip TEXT);`,
+  `ALTER TABLE workshop_meta ADD COLUMN tags TEXT;
+   ALTER TABLE workshop_meta ADD COLUMN creator TEXT;
+   ALTER TABLE workshop_meta ADD COLUMN subscriptions INTEGER;
+   ALTER TABLE workshop_meta ADD COLUMN deps TEXT;
+   ALTER TABLE workshop_meta ADD COLUMN deps_fetched_at INTEGER;
+   CREATE TABLE steam_personas (steamid TEXT PRIMARY KEY, name TEXT, fetched_at INTEGER NOT NULL);`,
 ];
 
 function migrate() {

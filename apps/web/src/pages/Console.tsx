@@ -3,7 +3,7 @@ import type { CommandDef } from '@pzsm/shared';
 import clsx from 'clsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { get, post, toastError, useLive } from '../api';
-import { Button, PageHeader } from '../components/ui';
+import { Button, PageHeader, Tooltip } from '../components/ui';
 
 export default function Console() {
   const lines = useLive((s) => s.console);
@@ -47,19 +47,25 @@ export default function Console() {
   };
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-[calc(100vh-9.5rem)] min-h-[420px] flex-col">
       <PageHeader
         title="Console"
         subtitle="Live server output. Commands are sent over RCON (or the console when RCON is not ready)."
         actions={
           <>
-            <input className="input w-56" placeholder="Filter output…" value={filter} onChange={(e) => setFilter(e.target.value)} />
-            <label className="flex items-center gap-1.5 text-sm text-muted">
-              <input type="checkbox" checked={hideNoise} onChange={(e) => setHideNoise(e.target.checked)} /> Hide log-level noise
-            </label>
-            <label className="flex items-center gap-1.5 text-sm text-muted">
-              <input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} /> Follow
-            </label>
+            <Tooltip content="Show only output lines containing this text (case-insensitive). Does not affect the server or the log files.">
+              <input className="input w-56" placeholder="Filter output…" value={filter} onChange={(e) => setFilter(e.target.value)} />
+            </Tooltip>
+            <Tooltip content="Hides the repetitive 'LOG : General ... Warning' lines the game prints constantly, so real messages stand out.">
+              <label className="flex items-center gap-1.5 text-sm text-muted">
+                <input type="checkbox" checked={hideNoise} onChange={(e) => setHideNoise(e.target.checked)} /> Hide log-level noise
+              </label>
+            </Tooltip>
+            <Tooltip content="Keep scrolling to the newest output. Turn off to read older lines without being pulled down.">
+              <label className="flex items-center gap-1.5 text-sm text-muted">
+                <input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} /> Follow
+              </label>
+            </Tooltip>
           </>
         }
       />
@@ -90,6 +96,7 @@ export default function Console() {
           }}
         >
           <input
+            title="Server command without a leading slash. Up/Down browse history, Tab completes the suggested command."
             className="input font-mono"
             placeholder={status?.state === 'running' ? 'Type a command, e.g. players, save, servermsg "Hello"' : 'Server is not running'}
             value={cmd}
@@ -112,7 +119,7 @@ export default function Console() {
             }}
             disabled={status?.state !== 'running'}
           />
-          <Button type="submit" variant="primary" disabled={status?.state !== 'running'}>
+          <Button type="submit" variant="primary" disabled={status?.state !== 'running'} title="Send the command to the server (Enter)">
             Send
           </Button>
         </form>

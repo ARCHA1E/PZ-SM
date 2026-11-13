@@ -3,7 +3,7 @@ import type { LogFileEntry } from '@pzsm/shared';
 import clsx from 'clsx';
 import { useMemo, useState } from 'react';
 import { fmtBytes, get, useDebounced } from '../api';
-import { Card, Empty, Loading, PageHeader } from '../components/ui';
+import { Card, Empty, Loading, PageHeader, Tooltip } from '../components/ui';
 
 const TYPE_LABELS: Record<string, string> = {
   'DebugLog-server': 'Server debug',
@@ -53,19 +53,23 @@ export default function Logs() {
         subtitle="Zomboid/Logs, including archived sessions"
         actions={
           <>
-            <input className="input w-64" placeholder="Search…" value={search} onChange={(e) => setSearch(e.target.value)} />
-            <label className="flex items-center gap-1.5 text-sm text-muted">
-              <input type="checkbox" checked={global} onChange={(e) => setGlobal(e.target.checked)} /> Search all files
-            </label>
+            <Tooltip content="Case-insensitive text search. Filters the open log file, or all files when 'Search all files' is on (min. 2 characters).">
+              <input className="input w-64" placeholder="Search…" value={search} onChange={(e) => setSearch(e.target.value)} />
+            </Tooltip>
+            <Tooltip content="Search every log file (limited to the selected log type below) instead of just the open one.">
+              <label className="flex items-center gap-1.5 text-sm text-muted">
+                <input type="checkbox" checked={global} onChange={(e) => setGlobal(e.target.checked)} /> Search all files
+              </label>
+            </Tooltip>
           </>
         }
       />
       <div className="flex flex-wrap gap-1">
-        <button className={clsx('btn', !type && 'border-accent text-accent')} onClick={() => (setType(''), setSel(null))}>
+        <button title="Show every log file type" className={clsx('btn', !type && 'border-accent text-accent')} onClick={() => (setType(''), setSel(null))}>
           All
         </button>
         {types.map(([t, n]) => (
-          <button key={t} className={clsx('btn', type === t && 'border-accent text-accent')} onClick={() => (setType(t), setSel(null))}>
+          <button key={t} title={`Show only "${t}" log files (${n})`} className={clsx('btn', type === t && 'border-accent text-accent')} onClick={() => (setType(t), setSel(null))}>
             {TYPE_LABELS[t] ?? t} <span className="text-xs text-muted">{n}</span>
           </button>
         ))}

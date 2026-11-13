@@ -251,8 +251,27 @@ export async function modsView(): Promise<ModsView> {
   for (const m of mods) dupes.set(m.id, (dupes.get(m.id) ?? 0) + 1);
   for (const [id, n] of dupes) if (n > 1) problems.push(`Mod id "${id}" is provided by ${n} folders; the first found is used`);
 
-  const metaRows = db.prepare('SELECT * FROM workshop_meta').all() as { workshop_id: string; title: string | null; preview: string | null; time_updated: number | null; size: number | null }[];
+  const metaRows = db.prepare('SELECT * FROM workshop_meta').all() as {
+    workshop_id: string;
+    title: string | null;
+    preview: string | null;
+    time_updated: number | null;
+    size: number | null;
+    tags: string | null;
+    creator: string | null;
+    subscriptions: number | null;
+    deps: string | null;
+  }[];
   const meta = new Map(metaRows.map((r) => [r.workshop_id, r]));
+  const personas = new Map((db.prepare('SELECT steamid, name FROM steam_personas').all() as { steamid: string; name: string | null }[]).map((r) => [r.steamid, r.name ?? undefined]));
+  const json = <T,>(s: string | null): T | undefined => {
+    if (!s) return undefined;
+    try {
+      return JSON.parse(s) as T;
+    } catch {
+      return undefined;
+    }
+  };
   const wids = [...new Set([...state.workshopItems, ...mods.filter((m) => m.workshopId).map((m) => m.workshopId!)])];
   const workshop: WorkshopItem[] = wids.map((wid) => {
     const mm = meta.get(wid);
@@ -269,8 +288,18 @@ export async function modsView(): Promise<ModsView> {
       modIds: mods.filter((m) => m.workshopId === wid).map((m) => m.id),
       size: local?.size ?? mm?.size ?? undefined,
       inServerConfig: state.workshopItems.includes(wid),
+      author: mm?.creator ? { steamid: mm.creator, name: personas.get(mm.creator) } : undefined,
+      tags: json<string[]>(mm?.tags ?? null),
+      requiredItems: json<string[]>(mm?.deps ?? null),
+      subscriptions: mm?.subscriptions ?? undefined,
     };
   });
+  const listed = new Set(state.workshopItems);
+  for (const w of workshop) {
+    if (!w.inServerConfig) continue;
+    const missing = (w.requiredItems ?? []).filter((d) => !listed.has(d));
+    if (missing.length) problems.push(`"${w.title ?? w.workshopId}" requires Workshop item(s) ${missing.map((d) => meta.get(d)?.title ?? d).join(', ')} which ${missing.length > 1 ? 'are' : 'is'} not added`);
+  }
   for (const wid of state.workshopItems) {
     if (workshop.find((w) => w.workshopId === wid)?.installed) continue;
     const onDisk = existsSync(join(installPaths().workshopContent, wid));

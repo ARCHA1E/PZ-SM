@@ -136,6 +136,105 @@ export interface WorkshopItem {
   size?: number;
   /** Listed in the server's WorkshopItems= */
   inServerConfig: boolean;
+  author?: WorkshopAuthor;
+  tags?: string[];
+  /** Workshop ids this item lists under "Required items" (when known). */
+  requiredItems?: string[];
+  subscriptions?: number;
+}
+
+// ---------------------------------------------------------------- Workshop browser
+
+export interface WorkshopAuthor {
+  steamid: string;
+  name?: string;
+}
+
+export type WorkshopSort = 'trend' | 'mostrecent' | 'lastupdated' | 'totaluniquesubscribers' | 'toprated' | 'textsearch';
+
+export interface WorkshopBrowseQuery {
+  q?: string;
+  sort?: WorkshopSort;
+  /** For sort=trend: 1, 7, 30, 90, 180, 365 or -1 (all time). */
+  days?: number;
+  tags?: string[];
+  excludeTags?: string[];
+  page?: number;
+  perPage?: number;
+  section?: 'items' | 'collections';
+}
+
+export interface WorkshopBrowseItem {
+  workshopId: string;
+  title: string;
+  preview?: string;
+  shortDescription?: string;
+  author: WorkshopAuthor;
+  tags: string[];
+  subscriptions?: number;
+  favorited?: number;
+  /** 0-5 */
+  stars?: number;
+  votes?: number;
+  timeCreated?: number;
+  timeUpdated?: number;
+  size?: number;
+  numChildren: number;
+  isCollection: boolean;
+  /** Annotated by the manager. */
+  inServer?: boolean;
+  installed?: boolean;
+}
+
+export interface WorkshopBrowseResult {
+  items: WorkshopBrowseItem[];
+  total: number;
+  page: number;
+  totalPages: number;
+  /** Tags the Workshop offers for this game. */
+  availableTags: string[];
+  source: 'web' | 'api';
+}
+
+export interface WorkshopItemDetails extends WorkshopBrowseItem {
+  /** BBCode description. */
+  description?: string;
+  requiredItems: { workshopId: string; title?: string }[];
+  /** For collections: child item ids. */
+  collectionItems?: string[];
+}
+
+export interface WorkshopInstallPlanItem {
+  workshopId: string;
+  title?: string;
+  reason: 'requested' | 'dependency' | 'collection';
+  /** Workshop id that pulled this one in. */
+  via?: string;
+  alreadyInServer: boolean;
+  installed: boolean;
+}
+
+export interface WorkshopInstallPlan {
+  items: WorkshopInstallPlanItem[];
+  /** Ids Steam reported as missing, private or removed. */
+  unavailable: string[];
+}
+
+export interface ModWipeOptions {
+  /** Also delete downloaded Workshop files. */
+  deleteFiles?: boolean;
+  /** Keep the mod list but drop mod sandbox options only. */
+  sandboxOnly?: boolean;
+}
+
+export interface ModWipeResult {
+  backup?: string;
+  removedMods: number;
+  removedWorkshopItems: number;
+  removedSandboxKeys: number;
+  removedMaps: string[];
+  removedSpawnRegions: number;
+  deletedFiles: boolean;
 }
 
 export interface ModsView {
@@ -226,7 +325,7 @@ export interface BackupEntry {
   file: string;
   createdAt: string;
   size: number;
-  kind: 'manual' | 'scheduled' | 'pre-restore' | 'pre-wipe' | 'pre-update' | 'pre-import' | 'import';
+  kind: 'manual' | 'scheduled' | 'pre-restore' | 'pre-wipe' | 'pre-update' | 'pre-import' | 'import' | 'pre-mod-wipe';
   note?: string;
 }
 
